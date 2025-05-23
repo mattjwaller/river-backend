@@ -2,54 +2,76 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db/db");
 
-router.post("/water-level", (req, res) => {
+router.post("/water-level", async (req, res) => {
   const { level_cm, trend, timestamp, min_level, max_level } = req.body;
 
-  const stmt = db.prepare(`
-    INSERT INTO water_level (level_cm, trend, timestamp, min_level, max_level)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  stmt.run(level_cm, trend, timestamp, min_level, max_level);
+  // Validate required fields
+  if (level_cm === undefined || trend === undefined || timestamp === undefined) {
+    return res.status(500).json({ error: "Missing required fields" });
+  }
 
-  res.sendStatus(200);
+  try {
+    await db.query(
+      `INSERT INTO water_level (level_cm, trend, timestamp, min_level, max_level)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [level_cm, trend, timestamp, min_level, max_level]
+    );
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Error saving water level:', err);
+    res.status(500).json({ error: "Failed to save water level" });
+  }
 });
 
-router.post("/device-status", (req, res) => {
+router.post("/device-status", async (req, res) => {
   const {
     cpu_percent, mem_percent, disk_percent, battery, temperature,
     uptime_seconds, ip_address, wifi_strength, status, timestamp
   } = req.body;
 
-  const stmt = db.prepare(`
-    INSERT INTO device_status (
-      cpu_percent, mem_percent, disk_percent, battery, temperature,
-      uptime_seconds, ip_address, wifi_strength, status, timestamp
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(
-    cpu_percent, mem_percent, disk_percent, battery, temperature,
-    uptime_seconds, ip_address, wifi_strength, status, timestamp
-  );
+  // Validate required fields
+  if (cpu_percent === undefined || mem_percent === undefined || 
+      disk_percent === undefined || status === undefined || timestamp === undefined) {
+    return res.status(500).json({ error: "Missing required fields" });
+  }
 
-  res.sendStatus(200);
+  try {
+    await db.query(
+      `INSERT INTO device_status (
+        cpu_percent, mem_percent, disk_percent, battery, temperature,
+        uptime_seconds, ip_address, wifi_strength, status, timestamp
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        cpu_percent, mem_percent, disk_percent, battery, temperature,
+        uptime_seconds, ip_address, wifi_strength, status, timestamp
+      ]
+    );
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Error saving device status:', err);
+    res.status(500).json({ error: "Failed to save device status" });
+  }
 });
 
 // Get current water level
-router.get("/water-level/current", (req, res) => {
-  const stmt = db.prepare(`
-    SELECT * FROM water_level 
-    ORDER BY timestamp DESC 
-    LIMIT 1
-  `);
-  
-  stmt.get((err, row) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Database error" });
+router.get("/water-level/current", async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM water_level 
+       ORDER BY timestamp DESC 
+       LIMIT 1`
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ message: "No water level data available" });
     }
-    res.json(row || { message: "No water level data available" });
-  });
+    
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching water level:', err);
+    res.status(500).json({ error: "Failed to fetch water level" });
+  }
 });
 
 // Get water level history
@@ -71,20 +93,23 @@ router.get("/water-level/history", (req, res) => {
 });
 
 // Get latest device status
-router.get("/device-status", (req, res) => {
-  const stmt = db.prepare(`
-    SELECT * FROM device_status 
-    ORDER BY timestamp DESC 
-    LIMIT 1
-  `);
-  
-  stmt.get((err, row) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Database error" });
+router.get("/device-status", async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM device_status 
+       ORDER BY timestamp DESC 
+       LIMIT 1`
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ message: "No device status data available" });
     }
-    res.json(row || { message: "No device status data available" });
-  });
+    
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching device status:', err);
+    res.status(500).json({ error: "Failed to fetch device status" });
+  }
 });
 
 // Stubbed weather endpoints
@@ -100,6 +125,84 @@ router.get("/weather/forecast", (req, res) => {
     message: "Weather forecast endpoint not implemented",
     status: "stubbed"
   });
+});
+
+// Log endpoints
+router.post("/logs", async (req, res) => {
+  const { level, message, source, metadata } = req.body;
+  const timestamp = req.body.timestamp || new Date().toISOString();
+
+  // Validate required fields
+  if (level === undefined || message === undefined || source === undefined) {
+    return res.status(500).json({ error: "Missing required fields" });
+  }
+
+  try {
+    await db.query(
+      `INSERT INTO device_logs (level, message, source, timestamp, metadata)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [level, message, source, timestamp, metadata]
+    );
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Error saving log:', err);
+    res.status(500).json({ error: "Failed to save log" });
+  }
+});
+
+// Get recent logs with optional filtering
+router.get("/logs", async (req, res) => {
+  const { level, source } = req.query;
+  let limit = parseInt(req.query.limit, 10);
+  let offset = parseInt(req.query.offset, 10);
+  if (isNaN(limit) || limit < 1) limit = 100;
+  if (isNaN(offset) || offset < 0) offset = 0;
+
+  try {
+    let query = `SELECT * FROM device_logs WHERE 1=1`;
+    const params = [];
+    let paramCount = 1;
+
+    if (level) {
+      query += ` AND level = $${paramCount}`;
+      params.push(level);
+      paramCount++;
+    }
+
+    if (source) {
+      query += ` AND source = $${paramCount}`;
+      params.push(source);
+      paramCount++;
+    }
+
+    query += ` ORDER BY timestamp DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    params.push(limit, offset);
+
+    const result = await db.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching logs:', err);
+    res.status(500).json({ error: "Failed to fetch logs" });
+  }
+});
+
+// Get log statistics
+router.get("/logs/stats", async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        level,
+        COUNT(*) as count,
+        MIN(timestamp) as first_seen,
+        MAX(timestamp) as last_seen
+      FROM device_logs
+      GROUP BY level
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching log stats:', err);
+    res.status(500).json({ error: "Failed to fetch log statistics" });
+  }
 });
 
 module.exports = router;
