@@ -13,7 +13,7 @@ router.post("/water-level", async (req, res) => {
   }
 
   try {
-    await db.query(
+    await db.pool.query(
       `INSERT INTO water_level (level_cm, trend, timestamp, min_level, max_level)
        VALUES ($1, $2, $3, $4, $5)`,
       [level_cm, trend, timestamp, min_level, max_level]
@@ -41,7 +41,7 @@ router.post("/device-status", async (req, res) => {
   }
 
   try {
-    await db.query(
+    await db.pool.query(
       `INSERT INTO device_status (
         cpu_percent, mem_percent, disk_percent, battery, temperature,
         uptime_seconds, ip_address, wifi_strength, status, timestamp
@@ -64,7 +64,7 @@ router.post("/device-status", async (req, res) => {
 router.get("/water-level/current", async (req, res) => {
   console.log("GET /water-level/current request received");
   try {
-    const result = await db.query(
+    const result = await db.pool.query(
       `SELECT * FROM water_level 
        ORDER BY timestamp DESC 
        LIMIT 1`
@@ -107,7 +107,7 @@ router.get("/water-level/history", (req, res) => {
 router.get("/device-status", async (req, res) => {
   console.log("GET /device-status request received");
   try {
-    const result = await db.query(
+    const result = await db.pool.query(
       `SELECT * FROM device_status 
        ORDER BY timestamp DESC 
        LIMIT 1`
@@ -156,7 +156,7 @@ router.post("/logs", async (req, res) => {
   }
 
   try {
-    await db.query(
+    await db.pool.query(
       `INSERT INTO device_logs (level, message, source, timestamp, metadata)
        VALUES ($1, $2, $3, $4, $5)`,
       [level, message, source, timestamp, metadata]
@@ -198,7 +198,7 @@ router.get("/logs", async (req, res) => {
     query += ` ORDER BY timestamp DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
     params.push(limit, offset);
 
-    const result = await db.query(query, params);
+    const result = await db.pool.query(query, params);
     console.log("Logs retrieved, count:", result.rows.length);
     res.json(result.rows);
   } catch (err) {
@@ -211,7 +211,7 @@ router.get("/logs", async (req, res) => {
 router.get("/logs/stats", async (req, res) => {
   console.log("GET /logs/stats request received");
   try {
-    const result = await db.query(`
+    const result = await db.pool.query(`
       SELECT 
         level,
         COUNT(*) as count,
