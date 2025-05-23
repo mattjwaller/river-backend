@@ -13,7 +13,33 @@ A Node.js backend service for monitoring river water levels and device status.
 ### Water Level
 - `POST /api/data/water-level` - Record new water level data
 - `GET /api/data/water-level/current` - Get current water level
-- `GET /api/data/water-level/history?days=30` - Get water level history
+- `GET /api/data/water-level/history` - Get water level history
+  - Query Parameters:
+    - `range`: Time range (e.g., "7d", "30d", "90d")
+    - `start_date` and `end_date`: Custom date range (ISO format)
+    - `resolution`: Data granularity ("hourly" or "daily")
+    - `limit`: Number of data points to return (default: 168)
+    - `offset`: Number of data points to skip (default: 0)
+  - Response Format:
+    ```json
+    {
+      "data": [
+        {
+          "timestamp": "2024-02-20T12:00:00.000Z",
+          "level_cm": 145,
+          "trend": "rising"
+        }
+      ],
+      "meta": {
+        "start_date": "2024-02-13T00:00:00.000Z",
+        "end_date": "2024-02-20T23:59:59.999Z",
+        "min_level": 120,
+        "max_level": 170,
+        "avg_level": 140,
+        "data_points": 168
+      }
+    }
+    ```
 
 ### Device Status
 - `POST /api/data/device-status` - Record device status

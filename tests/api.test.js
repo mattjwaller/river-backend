@@ -381,4 +381,92 @@ describe('API Endpoints', () => {
       expect(errorStats.last_seen).toBe('2024-02-20T12:01:00Z');
     });
   });
+
+  describe('GET /water-level/history', () => {
+    beforeEach(() => {
+      // Add some test data
+      mockData.waterLevel = [
+        {
+          id: 1,
+          level_cm: 150,
+          trend: 'rising',
+          timestamp: '2024-02-20T12:00:00Z',
+          min_level: 100,
+          max_level: 200
+        },
+        {
+          id: 2,
+          level_cm: 145,
+          trend: 'falling',
+          timestamp: '2024-02-20T11:00:00Z',
+          min_level: 100,
+          max_level: 200
+        },
+        {
+          id: 3,
+          level_cm: 155,
+          trend: 'stable',
+          timestamp: '2024-02-20T10:00:00Z',
+          min_level: 100,
+          max_level: 200
+        }
+      ];
+    });
+
+    it('should return water level history with range parameter', async () => {
+      const response = await request(app)
+        .get('/water-level/history?range=7d');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('meta');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
+      expect(response.body.data[0]).toHaveProperty('timestamp');
+      expect(response.body.data[0]).toHaveProperty('level_cm');
+      expect(response.body.data[0]).toHaveProperty('trend');
+    });
+
+    it('should return water level history with start_date and end_date', async () => {
+      const response = await request(app)
+        .get('/water-level/history?start_date=2024-02-19T00:00:00Z&end_date=2024-02-21T00:00:00Z');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('meta');
+    });
+
+    it('should handle invalid range format', async () => {
+      const response = await request(app)
+        .get('/water-level/history?range=invalid');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should handle missing date parameters', async () => {
+      const response = await request(app)
+        .get('/water-level/history');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should respect limit and offset parameters', async () => {
+      const response = await request(app)
+        .get('/water-level/history?range=7d&limit=2&offset=1');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.length).toBeLessThanOrEqual(2);
+    });
+
+    it('should handle different resolutions', async () => {
+      const response = await request(app)
+        .get('/water-level/history?range=7d&resolution=daily');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('meta');
+    });
+  });
 }); 

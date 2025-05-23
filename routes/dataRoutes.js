@@ -84,23 +84,118 @@ router.get("/water-level/current", async (req, res) => {
 });
 
 // Get water level history
-router.get("/water-level/history", (req, res) => {
-  const days = parseInt(req.query.days) || 30;
-  console.log("GET /water-level/history request received, days:", days);
-  const stmt = db.prepare(`
-    SELECT * FROM water_level 
-    WHERE timestamp >= datetime('now', ?)
-    ORDER BY timestamp DESC
-  `);
+router.get("/water-level/history", async (req, res) => {
+  console.log("GET /water-level/history request received:", req.query);
   
-  stmt.all(`-${days} days`, (err, rows) => {
-    if (err) {
-      console.error("Error fetching water level history:", err);
-      return res.status(500).json({ error: "Database error" });
+  try {
+    // Parse query parameters
+    const { start_date, end_date, range, resolution = 'hourly', limit = 168, offset = 0 } = req.query;
+    
+    // Calculate date range
+    let startDate, endDate;
+    if (range) {
+      // Parse range like "7d", "30d", "90d"
+      const match = /^(\d+)([dhm])$/.exec(range);
+      if (!match) {
+        return res.status(400).json({ error: 'Invalid range format. Use format like "7d", "30d", "90d"' });
+      }
+      const [_, num, unit] = match;
+      const now = new Date();
+      endDate = now;
+      if (unit === 'd') startDate = new Date(now - num * 24 * 60 * 60 * 1000);
+      else if (unit === 'h') startDate = new Date(now - num * 60 * 60 * 1000);
+      else if (unit === 'm') startDate = new Date(now - num * 60 * 1000);
+    } else if (start_date && end_date) {
+      startDate = new Date(start_date);
+      endDate = new Date(end_date);
+    } else {
+      return res.status(400).json({ error: 'Must provide either range or start_date and end_date' });
     }
-    console.log("Water level history retrieved, count:", rows.length);
-    res.json(rows || []);
-  });
+
+    // Build the query based on resolution
+    let groupBy, selectExtra = '';
+    if (resolution === 'daily') {
+      groupBy = "DATE_TRUNC('day', timestamp)";
+      selectExtra = ", DATE_TRUNC('day', timestamp) as ts";
+    } else if (resolution === 'hourly') {
+      groupBy = "DATE_TRUNC('hour', timestamp)";
+      selectExtra = ", DATE_TRUNC('hour', timestamp) as ts";
+    } else {
+      groupBy = null;
+    }
+
+    // Query for the data points
+    let dataQuery, dataValues;
+    if (groupBy) {
+      dataQuery = `
+        SELECT
+          AVG(level_cm) as level_cm,
+          CASE
+            WHEN AVG(level_cm) > LAG(AVG(level_cm)) OVER (ORDER BY ts) THEN 'rising'
+            WHEN AVG(level_cm) < LAG(AVG(level_cm)) OVER (ORDER BY ts) THEN 'falling'
+            ELSE 'stable'
+          END as trend
+          ${selectExtra}
+        FROM water_level
+        WHERE timestamp BETWEEN $1 AND $2
+        GROUP BY ts
+        ORDER BY ts DESC
+        LIMIT $3 OFFSET $4
+      `;
+      dataValues = [startDate.toISOString(), endDate.toISOString(), limit, offset];
+    } else {
+      dataQuery = `
+        SELECT
+          level_cm,
+          trend,
+          timestamp as ts
+        FROM water_level
+        WHERE timestamp BETWEEN $1 AND $2
+        ORDER BY timestamp DESC
+        LIMIT $3 OFFSET $4
+      `;
+      dataValues = [startDate.toISOString(), endDate.toISOString(), limit, offset];
+    }
+
+    // Query for metadata
+    const metaQuery = `
+      SELECT
+        MIN(level_cm) as min_level,
+        MAX(level_cm) as max_level,
+        AVG(level_cm) as avg_level,
+        COUNT(*) as data_points
+      FROM water_level
+      WHERE timestamp BETWEEN $1 AND $2
+    `;
+
+    // Execute queries
+    const [dataResult, metaResult] = await Promise.all([
+      db.pool.query(dataQuery, dataValues),
+      db.pool.query(metaQuery, [startDate.toISOString(), endDate.toISOString()])
+    ]);
+
+    // Format the response
+    const data = dataResult.rows.map(row => ({
+      timestamp: row.ts.toISOString(),
+      level_cm: Math.round(row.level_cm),
+      trend: row.trend
+    }));
+
+    const meta = {
+      start_date: startDate.toISOString(),
+      end_date: endDate.toISOString(),
+      min_level: Math.round(metaResult.rows[0].min_level),
+      max_level: Math.round(metaResult.rows[0].max_level),
+      avg_level: Math.round(metaResult.rows[0].avg_level),
+      data_points: Number(metaResult.rows[0].data_points)
+    };
+
+    console.log("Water level history retrieved:", { dataPoints: data.length, meta });
+    res.json({ data, meta });
+  } catch (err) {
+    console.error('Error fetching water level history:', err);
+    res.status(500).json({ error: "Failed to fetch water level history" });
+  }
 });
 
 // Get latest device status
