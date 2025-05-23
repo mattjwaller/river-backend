@@ -127,18 +127,19 @@ router.get("/water-level/history", async (req, res) => {
     // Query for the data points
     let dataQuery, dataValues;
     if (groupBy) {
+      const truncExpr = resolution === 'daily' ? "DATE_TRUNC('day', timestamp)" : "DATE_TRUNC('hour', timestamp)";
       dataQuery = `
         SELECT
+          ${truncExpr} as ts,
           AVG(level_cm) as level_cm,
           CASE
-            WHEN AVG(level_cm) > LAG(AVG(level_cm)) OVER (ORDER BY ts) THEN 'rising'
-            WHEN AVG(level_cm) < LAG(AVG(level_cm)) OVER (ORDER BY ts) THEN 'falling'
+            WHEN AVG(level_cm) > LAG(AVG(level_cm)) OVER (ORDER BY ${truncExpr}) THEN 'rising'
+            WHEN AVG(level_cm) < LAG(AVG(level_cm)) OVER (ORDER BY ${truncExpr}) THEN 'falling'
             ELSE 'stable'
           END as trend
-          ${selectExtra}
         FROM water_level
         WHERE timestamp BETWEEN $1 AND $2
-        GROUP BY ts
+        GROUP BY ${truncExpr}
         ORDER BY ts DESC
         LIMIT $3 OFFSET $4
       `;
