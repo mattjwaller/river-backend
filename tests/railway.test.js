@@ -1,6 +1,6 @@
 const request = require('supertest');
 
-const API_URL = 'https://river-backend-production.up.railway.app';
+const API_URL = 'https://river-backend-production.up.railway.app:8080';
 
 describe('Railway Backend API Tests', () => {
   describe('POST /water-level', () => {
