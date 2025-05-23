@@ -4,6 +4,7 @@ const app = express();
 // require("dotenv").config(); // Not needed in Railway production
 
 const dataRoutes = require("./routes/dataRoutes");
+console.log("Data routes loaded");
 
 app.use(cors());
 app.use(express.json());
