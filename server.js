@@ -11,6 +11,11 @@ app.use(express.json());
 
 // API key authentication middleware
 app.use((req, res, next) => {
+  // Skip API key check for health check endpoint
+  if (req.path === '/') {
+    return next();
+  }
+  
   const apiKey = req.headers['x-api-key'];
   if (!apiKey || apiKey !== process.env.API_KEY) {
     console.warn(`[${new Date().toISOString()}] Unauthorized request:`, req.method, req.originalUrl);
