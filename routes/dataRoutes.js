@@ -4,9 +4,11 @@ const db = require("../db/db");
 
 router.post("/water-level", async (req, res) => {
   const { level_cm, trend, timestamp, min_level, max_level } = req.body;
+  console.log("POST /water-level request received:", req.body);
 
   // Validate required fields
   if (level_cm === undefined || trend === undefined || timestamp === undefined) {
+    console.error("Missing required fields in /water-level request:", req.body);
     return res.status(500).json({ error: "Missing required fields" });
   }
 
@@ -16,6 +18,7 @@ router.post("/water-level", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [level_cm, trend, timestamp, min_level, max_level]
     );
+    console.log("Water level data saved successfully:", { level_cm, trend, timestamp });
     res.sendStatus(200);
   } catch (err) {
     console.error('Error saving water level:', err);
@@ -28,10 +31,12 @@ router.post("/device-status", async (req, res) => {
     cpu_percent, mem_percent, disk_percent, battery, temperature,
     uptime_seconds, ip_address, wifi_strength, status, timestamp
   } = req.body;
+  console.log("POST /device-status request received:", req.body);
 
   // Validate required fields
   if (cpu_percent === undefined || mem_percent === undefined || 
       disk_percent === undefined || status === undefined || timestamp === undefined) {
+    console.error("Missing required fields in /device-status request:", req.body);
     return res.status(500).json({ error: "Missing required fields" });
   }
 
@@ -47,6 +52,7 @@ router.post("/device-status", async (req, res) => {
         uptime_seconds, ip_address, wifi_strength, status, timestamp
       ]
     );
+    console.log("Device status data saved successfully:", { cpu_percent, mem_percent, status });
     res.sendStatus(200);
   } catch (err) {
     console.error('Error saving device status:', err);
@@ -56,6 +62,7 @@ router.post("/device-status", async (req, res) => {
 
 // Get current water level
 router.get("/water-level/current", async (req, res) => {
+  console.log("GET /water-level/current request received");
   try {
     const result = await db.query(
       `SELECT * FROM water_level 
@@ -64,9 +71,11 @@ router.get("/water-level/current", async (req, res) => {
     );
     
     if (result.rows.length === 0) {
+      console.log("No water level data available");
       return res.json({ message: "No water level data available" });
     }
     
+    console.log("Water level data retrieved:", result.rows[0]);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error fetching water level:', err);
@@ -77,6 +86,7 @@ router.get("/water-level/current", async (req, res) => {
 // Get water level history
 router.get("/water-level/history", (req, res) => {
   const days = parseInt(req.query.days) || 30;
+  console.log("GET /water-level/history request received, days:", days);
   const stmt = db.prepare(`
     SELECT * FROM water_level 
     WHERE timestamp >= datetime('now', ?)
@@ -85,15 +95,17 @@ router.get("/water-level/history", (req, res) => {
   
   stmt.all(`-${days} days`, (err, rows) => {
     if (err) {
-      console.error(err);
+      console.error("Error fetching water level history:", err);
       return res.status(500).json({ error: "Database error" });
     }
+    console.log("Water level history retrieved, count:", rows.length);
     res.json(rows || []);
   });
 });
 
 // Get latest device status
 router.get("/device-status", async (req, res) => {
+  console.log("GET /device-status request received");
   try {
     const result = await db.query(
       `SELECT * FROM device_status 
@@ -102,9 +114,11 @@ router.get("/device-status", async (req, res) => {
     );
     
     if (result.rows.length === 0) {
+      console.log("No device status data available");
       return res.json({ message: "No device status data available" });
     }
     
+    console.log("Device status data retrieved:", result.rows[0]);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error fetching device status:', err);
@@ -114,6 +128,7 @@ router.get("/device-status", async (req, res) => {
 
 // Stubbed weather endpoints
 router.get("/weather/current", (req, res) => {
+  console.log("GET /weather/current request received");
   res.json({
     message: "Weather endpoint not implemented",
     status: "stubbed"
@@ -121,6 +136,7 @@ router.get("/weather/current", (req, res) => {
 });
 
 router.get("/weather/forecast", (req, res) => {
+  console.log("GET /weather/forecast request received");
   res.json({
     message: "Weather forecast endpoint not implemented",
     status: "stubbed"
@@ -131,9 +147,11 @@ router.get("/weather/forecast", (req, res) => {
 router.post("/logs", async (req, res) => {
   const { level, message, source, metadata } = req.body;
   const timestamp = req.body.timestamp || new Date().toISOString();
+  console.log("POST /logs request received:", req.body);
 
   // Validate required fields
   if (level === undefined || message === undefined || source === undefined) {
+    console.error("Missing required fields in /logs request:", req.body);
     return res.status(500).json({ error: "Missing required fields" });
   }
 
@@ -143,6 +161,7 @@ router.post("/logs", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [level, message, source, timestamp, metadata]
     );
+    console.log("Log data saved successfully:", { level, message, source });
     res.sendStatus(200);
   } catch (err) {
     console.error('Error saving log:', err);
@@ -157,6 +176,7 @@ router.get("/logs", async (req, res) => {
   let offset = parseInt(req.query.offset, 10);
   if (isNaN(limit) || limit < 1) limit = 100;
   if (isNaN(offset) || offset < 0) offset = 0;
+  console.log("GET /logs request received, filters:", { level, source, limit, offset });
 
   try {
     let query = `SELECT * FROM device_logs WHERE 1=1`;
@@ -179,6 +199,7 @@ router.get("/logs", async (req, res) => {
     params.push(limit, offset);
 
     const result = await db.query(query, params);
+    console.log("Logs retrieved, count:", result.rows.length);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching logs:', err);
@@ -188,6 +209,7 @@ router.get("/logs", async (req, res) => {
 
 // Get log statistics
 router.get("/logs/stats", async (req, res) => {
+  console.log("GET /logs/stats request received");
   try {
     const result = await db.query(`
       SELECT 
@@ -198,6 +220,7 @@ router.get("/logs/stats", async (req, res) => {
       FROM device_logs
       GROUP BY level
     `);
+    console.log("Log statistics retrieved:", result.rows);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching log stats:', err);
