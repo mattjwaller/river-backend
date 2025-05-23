@@ -32,3 +32,11 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully.');
   process.exit();
 });
+
+process.on('exit', code => {
+  console.log('Process exiting with code:', code);
+});
+
+setInterval(() => {
+  console.log('App is alive at', new Date().toISOString());
+}, 10000);
