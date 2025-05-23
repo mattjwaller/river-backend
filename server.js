@@ -8,6 +8,17 @@ console.log("Data routes loaded");
 
 app.use(cors());
 app.use(express.json());
+
+// API key authentication middleware
+app.use((req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey || apiKey !== process.env.API_KEY) {
+    console.warn(`[${new Date().toISOString()}] Unauthorized request:`, req.method, req.originalUrl);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+});
+
 app.use("/api/data", (req, res, next) => {
   console.log(`[${new Date().toISOString()}] /api/data route hit:`, req.method, req.url);
   next();
