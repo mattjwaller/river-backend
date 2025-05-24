@@ -362,10 +362,10 @@ router.get("/ea-flood-data", async (req, res) => {
     const since = new Date(now.getTime() - (24 * 60 * 60 * 1000)).toISOString();
     
     // Construct the URL with properly encoded parameters
-    const baseUrl = "https://environment.data.gov.uk/flood-monitoring/data/readings";
+    const baseUrl = "https://environment.data.gov.uk/flood-monitoring/id/measures/1431TH-level-stage-i-15_min-mASD/readings";
     const params = new URLSearchParams({
-      measure: "1431TH-level-stage-i-15_min-mASD",
-      since: since
+      since: since,
+      _limit: 1000
     });
     const url = `${baseUrl}?${params.toString()}`;
     
