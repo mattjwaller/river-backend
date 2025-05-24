@@ -265,7 +265,11 @@ router.get("/weather/forecast", (req, res) => {
 
 // Log endpoints
 router.post("/logs", async (req, res) => {
-  const { level, message, source, metadata } = req.body;
+  // Accept both device_id/meta and source/metadata for compatibility
+  const level = req.body.level;
+  const message = req.body.message;
+  const source = req.body.device_id || req.body.source; // prefer device_id if present
+  const metadata = req.body.meta || req.body.metadata;  // prefer meta if present
   const timestamp = req.body.timestamp || new Date().toISOString();
   console.log("POST /logs request received:", req.body);
 
