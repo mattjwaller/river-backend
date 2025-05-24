@@ -357,8 +357,9 @@ router.get("/logs/stats", async (req, res) => {
 router.get("/ea-flood-data", async (req, res) => {
   console.log("GET /ea-flood-data request received");
   try {
-    // Calculate timestamp for 24 hours ago
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Calculate timestamp for 24 hours ago using current date
+    const now = new Date();
+    const since = new Date(now.getTime() - (24 * 60 * 60 * 1000)).toISOString();
     
     // Construct the URL with properly encoded parameters
     const baseUrl = "https://environment.data.gov.uk/flood-monitoring/data/readings";
@@ -373,7 +374,8 @@ router.get("/ea-flood-data", async (req, res) => {
     // Fetch data from Environment Agency API
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Environment Agency API responded with status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Environment Agency API responded with status: ${response.status}. Response: ${errorText}`);
     }
     
     const data = await response.json();
