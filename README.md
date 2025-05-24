@@ -7,6 +7,7 @@ A Node.js backend service for monitoring river water levels and device status.
 - Water level monitoring and history
 - Device status tracking
 - Weather data integration (coming soon)
+- Device command system
 
 ## API Endpoints
 
@@ -45,6 +46,41 @@ A Node.js backend service for monitoring river water levels and device status.
 - `POST /api/data/device-status` - Record device status
 - `GET /api/data/device-status` - Get latest device status
 
+### Device Commands
+- `GET /api/commands?device_id=pi-001` - Get pending commands for a device
+  - Response Format:
+    ```json
+    {
+      "id": 42,
+      "command": "restart-sensor",
+      "payload": {}
+    }
+    ```
+- `POST /api/commands/:id/result` - Submit command execution result
+  - Request Body:
+    ```json
+    {
+      "status": "done",
+      "result": "Sensor restarted successfully"
+    }
+    ```
+- `POST /api/commands` - Create a new command (admin endpoint)
+  - Request Body:
+    ```json
+    {
+      "device_id": "pi-001",
+      "command": "restart-sensor",
+      "payload": {}
+    }
+    ```
+- `GET /api/commands/:id` - Get command status (admin endpoint)
+
+Available Commands:
+- `restart-sensor`: Restart the water level sensor
+- `reboot`: Reboot the Raspberry Pi
+- `update-config`: Update device configuration
+- `capture-snapshot`: Capture a system snapshot
+
 ### Weather (Coming Soon)
 - `GET /api/data/weather/current` - Get current weather
 - `GET /api/data/weather/forecast` - Get weather forecast
@@ -59,6 +95,8 @@ npm install
 2. Create a `.env` file with your configuration:
 ```
 PORT=3000
+API_KEY=your-api-key
+DATABASE_URL=your-database-url
 ```
 
 3. Start the server:
@@ -70,7 +108,7 @@ npm start
 
 The project uses:
 - Express.js for the web server
-- SQLite for data storage
+- PostgreSQL for data storage
 - CORS enabled for cross-origin requests
 
 ## Database Schema
@@ -94,4 +132,14 @@ The project uses:
 - ip_address (TEXT)
 - wifi_strength (INTEGER)
 - status (TEXT)
-- timestamp (DATETIME) 
+- timestamp (DATETIME)
+
+### Device Commands
+- id (SERIAL PRIMARY KEY)
+- device_id (TEXT)
+- command (TEXT)
+- payload (JSONB)
+- status (TEXT)
+- created_at (TIMESTAMP)
+- updated_at (TIMESTAMP)
+- picked_up_at (TIMESTAMP) 

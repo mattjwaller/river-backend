@@ -1,10 +1,18 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-// require("dotenv").config(); // Not needed in Railway production
+require("dotenv").config();
 
 const dataRoutes = require("./routes/dataRoutes");
+const commandRoutes = require("./routes/commandRoutes");
+const db = require("./db/db");
 console.log("Data routes loaded");
+
+// Set default API key if not in environment
+if (!process.env.API_KEY) {
+  process.env.API_KEY = 'river_1e2f3a4b5c6d7e8f9g0h1i2j3k4l5m6n';
+  console.log('Using default API key for development');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -29,13 +37,30 @@ app.use("/api/data", (req, res, next) => {
   next();
 }, dataRoutes);
 
+app.use("/api/commands", (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] /api/commands route hit:`, req.method, req.url);
+  next();
+}, commandRoutes);
+
 app.get("/", (_, res) => {
   console.log(`[${new Date().toISOString()}] Root route hit`);
   res.send("River monitor API is running");
 });
 
+// Initialize database and start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
+db.initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`API Key: ${process.env.API_KEY}`);
+    });
+  })
+  .catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
 
 process.on('uncaughtException', err => {
   console.error('Uncaught Exception:', err);

@@ -1,13 +1,34 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Required for Railway's PostgreSQL
-});
+// Mock database for local development
+const mockDb = {
+  water_level: [],
+  device_status: [],
+  device_logs: [],
+  device_commands: [],
+  query: async (text, params) => {
+    console.log('Mock DB Query:', text, params);
+    return { rows: [] };
+  }
+};
+
+// Use mock database in development if DATABASE_URL is not set
+const pool = process.env.DATABASE_URL 
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false } // Required for Railway's PostgreSQL
+    })
+  : mockDb;
 
 // Initialize database tables
 const initializeDatabase = async () => {
+  // Skip initialization if using mock database
+  if (!process.env.DATABASE_URL) {
+    console.log('Using mock database for local development');
+    return;
+  }
+
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS water_level (
@@ -40,6 +61,18 @@ const initializeDatabase = async () => {
         source TEXT NOT NULL,
         timestamp TIMESTAMP NOT NULL,
         metadata JSONB
+      );
+
+      CREATE TABLE IF NOT EXISTS device_commands (
+        id SERIAL PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        command TEXT NOT NULL,
+        payload JSONB DEFAULT '{}',
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT now(),
+        updated_at TIMESTAMP,
+        picked_up_at TIMESTAMP,
+        result TEXT
       );
     `);
     console.log('Database initialized successfully');

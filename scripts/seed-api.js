@@ -1,27 +1,38 @@
 const fetch = require('node-fetch');
 
 const API_BASE = 'https://river-backend-production.up.railway.app/api/data';
+const API_KEY = 'river_1e2f3a4b5c6d7e8f9g0h1i2j3k4l5m6n'; // Replace with your actual API key
 
 async function seed() {
-  // Seed water level
-  const waterLevel = await fetch(`${API_BASE}/water-level`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      level_cm: 150,
-      trend: 'rising',
-      timestamp: new Date().toISOString(),
-      min_level: 100,
-      max_level: 200
-    })
-  });
-  console.log('Water level status:', waterLevel.status);
-  console.log('Water level response:', await waterLevel.text());
+  // Seed water level readings for the last 90 days
+  const today = new Date();
+  for (let i = 0; i < 90; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const timestamp = date.toISOString();
+    const level_cm = Math.floor(Math.random() * 101) + 100; // Random level between 100 and 200
+    const trend = ['rising', 'falling', 'stable'][Math.floor(Math.random() * 3)];
+    const min_level = 100;
+    const max_level = 200;
+
+    const waterLevel = await fetch(`${API_BASE}/water-level`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({
+        level_cm,
+        trend,
+        timestamp,
+        min_level,
+        max_level
+      })
+    });
+    console.log(`Water level for ${timestamp} status:`, waterLevel.status);
+  }
 
   // Seed device status
   const deviceStatus = await fetch(`${API_BASE}/device-status`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
     body: JSON.stringify({
       cpu_percent: 45,
       mem_percent: 60,
@@ -41,7 +52,7 @@ async function seed() {
   // Seed log
   const log = await fetch(`${API_BASE}/logs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
     body: JSON.stringify({
       level: 'info',
       message: 'Seed log message',
@@ -54,7 +65,4 @@ async function seed() {
   console.log('Log response:', await log.text());
 }
 
-seed().catch(err => {
-  console.error('Seeding failed:', err);
-  process.exit(1);
-}); 
+seed().catch(console.error); 
