@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db/db");
+const fetch = require("node-fetch");
 
 router.post("/water-level", async (req, res) => {
   const { level_cm, trend, timestamp, min_level, max_level } = req.body;
@@ -349,6 +350,31 @@ router.get("/logs/stats", async (req, res) => {
   } catch (err) {
     console.error('Error fetching log stats:', err);
     res.status(500).json({ error: "Failed to fetch log statistics" });
+  }
+});
+
+// Get Environment Agency flood monitoring data
+router.get("/ea-flood-data", async (req, res) => {
+  console.log("GET /ea-flood-data request received");
+  try {
+    // Calculate timestamp for 24 hours ago
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    // Construct the URL with the timestamp
+    const url = `https://environment.data.gov.uk/flood-monitoring/data/readings?measure=1431TH-level-stage-i-15_min-mASD&since=${since}`;
+    
+    // Fetch data from Environment Agency API
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Environment Agency API responded with status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log("Environment Agency flood data retrieved successfully");
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching Environment Agency flood data:', err);
+    res.status(500).json({ error: "Failed to fetch Environment Agency flood data" });
   }
 });
 
