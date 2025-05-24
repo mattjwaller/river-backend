@@ -41,6 +41,9 @@ router.post("/device-status", async (req, res) => {
   }
 
   try {
+    // Convert wifi_strength to integer if it exists
+    const wifiStrengthInt = wifi_strength !== undefined ? Math.round(Number(wifi_strength)) : null;
+
     await db.pool.query(
       `INSERT INTO device_status (
         cpu_percent, mem_percent, disk_percent, battery, temperature,
@@ -49,7 +52,7 @@ router.post("/device-status", async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         cpu_percent, mem_percent, disk_percent, battery, temperature,
-        uptime_seconds, ip_address, wifi_strength, status, timestamp
+        uptime_seconds, ip_address, wifiStrengthInt, status, timestamp
       ]
     );
     console.log("Device status data saved successfully:", { cpu_percent, mem_percent, status });
