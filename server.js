@@ -8,12 +8,6 @@ const commandRoutes = require("./routes/commandRoutes");
 const db = require("./db/db");
 console.log("Data routes loaded");
 
-// Set default API key if not in environment
-if (!process.env.API_KEY) {
-  process.env.API_KEY = 'river_1e2f3a4b5c6d7e8f9g0h1i2j3k4l5m6n';
-  console.log('Using default API key for development');
-}
-
 app.use(cors());
 app.use(express.json());
 

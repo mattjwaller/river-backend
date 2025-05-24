@@ -1,0 +1,4 @@
+requests==2.31.0
+python-dotenv==1.0.0
+RPi.GPIO==0.7.1
+adafruit-circuitpython-hcsr04==0.4.8 
