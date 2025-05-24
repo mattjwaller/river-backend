@@ -360,8 +360,15 @@ router.get("/ea-flood-data", async (req, res) => {
     // Calculate timestamp for 24 hours ago
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    // Construct the URL with the timestamp
-    const url = `https://environment.data.gov.uk/flood-monitoring/data/readings?measure=1431TH-level-stage-i-15_min-mASD&since=${since}`;
+    // Construct the URL with properly encoded parameters
+    const baseUrl = "https://environment.data.gov.uk/flood-monitoring/data/readings";
+    const params = new URLSearchParams({
+      measure: "1431TH-level-stage-i-15_min-mASD",
+      since: since
+    });
+    const url = `${baseUrl}?${params.toString()}`;
+    
+    console.log("Fetching from URL:", url);
     
     // Fetch data from Environment Agency API
     const response = await fetch(url);
