@@ -34,8 +34,7 @@ router.post("/device-status", async (req, res) => {
   console.log("POST /device-status request received:", req.body);
 
   // Validate required fields
-  if (cpu_percent === undefined || mem_percent === undefined || 
-      disk_percent === undefined || status === undefined || timestamp === undefined) {
+  if (status === undefined || timestamp === undefined) {
     console.error("Missing required fields in /device-status request:", req.body);
     return res.status(500).json({ error: "Missing required fields" });
   }
@@ -215,6 +214,28 @@ router.get("/device-status", async (req, res) => {
     if (result.rows.length === 0) {
       console.log("No device status data available");
       return res.json({ message: "No device status data available" });
+    }
+
+    const lastUpdate = new Date(result.rows[0].timestamp);
+    const now = new Date();
+    const minutesSinceLastUpdate = (now - lastUpdate) / (1000 * 60);
+
+    // If no update in 3 minutes, return offline status
+    if (minutesSinceLastUpdate > 3) {
+      console.log("Device appears offline - last update was", minutesSinceLastUpdate.toFixed(1), "minutes ago");
+      return res.json({
+        ...result.rows[0],
+        status: "offline",
+        cpu_percent: null,
+        mem_percent: null,
+        disk_percent: null,
+        battery: null,
+        temperature: null,
+        uptime_seconds: null,
+        ip_address: null,
+        wifi_strength: null,
+        last_seen: result.rows[0].timestamp
+      });
     }
     
     console.log("Device status data retrieved:", result.rows[0]);

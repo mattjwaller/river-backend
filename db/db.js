@@ -42,9 +42,9 @@ const initializeDatabase = async () => {
 
       CREATE TABLE IF NOT EXISTS device_status (
         id SERIAL PRIMARY KEY,
-        cpu_percent INTEGER NOT NULL,
-        mem_percent INTEGER NOT NULL,
-        disk_percent INTEGER NOT NULL,
+        cpu_percent INTEGER,
+        mem_percent INTEGER,
+        disk_percent INTEGER,
         battery INTEGER,
         temperature INTEGER,
         uptime_seconds INTEGER,
