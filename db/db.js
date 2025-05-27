@@ -74,11 +74,25 @@ const initializeDatabase = async () => {
         picked_up_at TIMESTAMP,
         result TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS weather_forecast (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP NOT NULL,
+        location_lat DECIMAL(9,6) NOT NULL,
+        location_lon DECIMAL(9,6) NOT NULL,
+        precipitation_mm DECIMAL(5,2),
+        temperature_c DECIMAL(4,2),
+        pressure_hpa DECIMAL(7,2),
+        wind_speed_mps DECIMAL(4,2),
+        forecast_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(timestamp, location_lat, location_lon)
+      );
     `);
-    console.log('Database initialized successfully');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-    throw error;
+    
+    console.log('Database tables initialized successfully');
+  } catch (err) {
+    console.error('Error initializing database tables:', err);
+    throw err;
   }
 };
 

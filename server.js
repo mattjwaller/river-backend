@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const dataRoutes = require("./routes/dataRoutes");
 const commandRoutes = require("./routes/commandRoutes");
+const forecastRoutes = require("./routes/forecastRoutes");
 const db = require("./db/db");
 console.log("Data routes loaded");
 
@@ -35,6 +36,11 @@ app.use("/api/commands", (req, res, next) => {
   console.log(`[${new Date().toISOString()}] /api/commands route hit:`, req.method, req.url);
   next();
 }, commandRoutes);
+
+app.use("/api/forecast", (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] /api/forecast route hit:`, req.method, req.url);
+  next();
+}, forecastRoutes);
 
 app.get("/", (_, res) => {
   console.log(`[${new Date().toISOString()}] Root route hit`);

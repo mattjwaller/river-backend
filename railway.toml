@@ -6,4 +6,8 @@ buildCommand = "npm install"
 startCommand = "npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-restartPolicyMaxRetries = 10 
+restartPolicyMaxRetries = 10
+
+[[cron]]
+schedule = "0 * * * *"  # Every hour
+command = "node scripts/fetch-weather.js" 
