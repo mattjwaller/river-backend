@@ -99,7 +99,12 @@ router.get('/', async (req, res) => {
       ),
       normalized_data AS (
         SELECT 
-          date_trunc($3, timestamp) as block_start,
+          CASE 
+            WHEN $3 = '6 hours' THEN 
+              date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
+            ELSE 
+              date_trunc('hour', timestamp)
+          END as block_start,
           location_lat,
           location_lon,
           SUM(precipitation_mm) as precipitation_mm,
@@ -109,7 +114,12 @@ router.get('/', async (req, res) => {
           MAX(forecast_created_at) as forecast_created_at
         FROM latest_forecast
         GROUP BY 
-          date_trunc($3, timestamp),
+          CASE 
+            WHEN $3 = '6 hours' THEN 
+              date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
+            ELSE 
+              date_trunc('hour', timestamp)
+          END,
           location_lat,
           location_lon
       )
