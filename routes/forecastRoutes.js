@@ -85,26 +85,46 @@ router.get('/', async (req, res) => {
     const startTime = now.clone().subtract(1, 'hour'); // Include last hour
     const endTime = now.clone().add(hours, 'hours');
 
-    // Get the latest forecast data within the time range
+    // Determine if we need to normalize to 6-hour blocks
+    const needsNormalization = hours > 48;
+    const timeBlock = needsNormalization ? '6 hours' : '1 hour';
+
+    // Get the forecast data with appropriate time blocks
     const result = await db.pool.query(`
       WITH latest_forecast AS (
         SELECT DISTINCT ON (timestamp) *
         FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
         ORDER BY timestamp, forecast_created_at DESC
+      ),
+      normalized_data AS (
+        SELECT 
+          date_trunc($3, timestamp) as block_start,
+          location_lat,
+          location_lon,
+          SUM(precipitation_mm) as precipitation_mm,
+          AVG(temperature_c) as temperature_c,
+          AVG(pressure_hpa) as pressure_hpa,
+          AVG(wind_speed_mps) as wind_speed_mps,
+          MAX(forecast_created_at) as forecast_created_at
+        FROM latest_forecast
+        GROUP BY 
+          date_trunc($3, timestamp),
+          location_lat,
+          location_lon
       )
       SELECT 
-        timestamp,
+        block_start as timestamp,
         location_lat,
         location_lon,
-        precipitation_mm,
-        temperature_c,
-        pressure_hpa,
-        wind_speed_mps,
+        ROUND(precipitation_mm::numeric, 2) as precipitation_mm,
+        ROUND(temperature_c::numeric, 2) as temperature_c,
+        ROUND(pressure_hpa::numeric, 2) as pressure_hpa,
+        ROUND(wind_speed_mps::numeric, 2) as wind_speed_mps,
         forecast_created_at
-      FROM latest_forecast
-      ORDER BY timestamp ASC
-    `, [startTime.toISOString(), endTime.toISOString()]);
+      FROM normalized_data
+      ORDER BY block_start ASC
+    `, [startTime.toISOString(), endTime.toISOString(), timeBlock]);
 
     // Add metadata about the forecast
     const response = {
@@ -113,7 +133,9 @@ router.get('/', async (req, res) => {
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
         data_points: result.rows.length,
-        forecast_created_at: result.rows[0]?.forecast_created_at || null
+        forecast_created_at: result.rows[0]?.forecast_created_at || null,
+        time_block: timeBlock,
+        normalized: needsNormalization
       },
       data: result.rows
     };
