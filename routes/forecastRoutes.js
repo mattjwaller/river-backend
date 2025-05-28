@@ -214,14 +214,14 @@ router.get('/summary', async (req, res) => {
           MAX(temperature_c) as max_temp,
           SUM(precipitation_mm) as total_precip,
           (
-            SELECT symbol_code
+            SELECT w2.symbol_code
             FROM weather_forecast w2
-            WHERE DATE(w2.timestamp) = DATE(w1.timestamp)
+            WHERE DATE(w2.timestamp) = DATE(timestamp)
             AND EXTRACT(HOUR FROM w2.timestamp) = 12
             ORDER BY w2.timestamp ASC
             LIMIT 1
           ) as day_condition
-        FROM weather_forecast w1
+        FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
         GROUP BY DATE(timestamp)
         ORDER BY DATE(timestamp)
