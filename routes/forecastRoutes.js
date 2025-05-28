@@ -213,14 +213,7 @@ router.get('/summary', async (req, res) => {
           MIN(temperature_c) as min_temp,
           MAX(temperature_c) as max_temp,
           SUM(precipitation_mm) as total_precip,
-          (
-            SELECT w2.symbol_code
-            FROM weather_forecast w2
-            WHERE DATE(w2.timestamp) = DATE(timestamp)
-            AND EXTRACT(HOUR FROM w2.timestamp) = 12
-            ORDER BY w2.timestamp ASC
-            LIMIT 1
-          ) as day_condition
+          MODE() WITHIN GROUP (ORDER BY symbol_code) as day_condition
         FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
         GROUP BY DATE(timestamp)
@@ -234,6 +227,7 @@ router.get('/summary', async (req, res) => {
         ROUND(total_precip::numeric, 1) as total_precip,
         day_condition
       FROM daily_forecast
+      ORDER BY forecast_date
     `, [now.toISOString(), endTime.toISOString()]);
 
     // Format the response
