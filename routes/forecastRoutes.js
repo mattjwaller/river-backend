@@ -36,15 +36,16 @@ router.post('/fetch', async (req, res) => {
         INSERT INTO weather_forecast (
           timestamp, location_lat, location_lon,
           precipitation_mm, temperature_c, pressure_hpa, wind_speed_mps,
-          symbol_code, forecast_created_at
+          relative_humidity_percent, symbol_code, forecast_created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (timestamp, location_lat, location_lon)
         DO UPDATE SET
           precipitation_mm = EXCLUDED.precipitation_mm,
           temperature_c = EXCLUDED.temperature_c,
           pressure_hpa = EXCLUDED.pressure_hpa,
           wind_speed_mps = EXCLUDED.wind_speed_mps,
+          relative_humidity_percent = EXCLUDED.relative_humidity_percent,
           symbol_code = EXCLUDED.symbol_code,
           forecast_created_at = EXCLUDED.forecast_created_at
       `, [
@@ -55,6 +56,7 @@ router.post('/fetch', async (req, res) => {
         details.air_temperature,
         details.air_pressure_at_sea_level,
         details.wind_speed,
+        details.relative_humidity,
         symbolCode,
         forecastCreatedAt
       ]);
@@ -201,6 +203,7 @@ router.get('/summary', async (req, res) => {
         wind_speed_mps,
         precipitation_mm,
         pressure_hpa,
+        relative_humidity_percent,
         symbol_code
       FROM latest_forecast
     `, [now.toISOString()]);
@@ -213,6 +216,7 @@ router.get('/summary', async (req, res) => {
           MIN(temperature_c) as min_temp,
           MAX(temperature_c) as max_temp,
           SUM(precipitation_mm) as total_precip,
+          AVG(relative_humidity_percent) as avg_humidity,
           MODE() WITHIN GROUP (ORDER BY symbol_code) as day_condition
         FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
@@ -225,6 +229,7 @@ router.get('/summary', async (req, res) => {
         ROUND(min_temp::numeric, 1) as min_temp,
         ROUND(max_temp::numeric, 1) as max_temp,
         ROUND(total_precip::numeric, 1) as total_precip,
+        ROUND(avg_humidity::numeric, 1) as avg_humidity,
         day_condition
       FROM daily_forecast
       ORDER BY forecast_date
@@ -236,6 +241,7 @@ router.get('/summary', async (req, res) => {
       wind: Math.round(currentResult.rows[0].wind_speed_mps),
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
       pressure: Math.round(currentResult.rows[0].pressure_hpa),
+      humidity: Math.round(currentResult.rows[0].relative_humidity_percent),
       condition: currentResult.rows[0].symbol_code || 'unknown'
     } : null;
 
@@ -249,7 +255,8 @@ router.get('/summary', async (req, res) => {
         condition: row.day_condition || 'unknown',
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
-        rain: Math.round(row.total_precip * 10) / 10
+        rain: Math.round(row.total_precip * 10) / 10,
+        humidity: Math.round(row.avg_humidity)
       };
     });
 

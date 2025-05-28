@@ -77,17 +77,17 @@ const initializeDatabase = async () => {
       );
 
       CREATE TABLE IF NOT EXISTS weather_forecast (
-        id SERIAL PRIMARY KEY,
-        timestamp TIMESTAMP NOT NULL,
-        location_lat DECIMAL(9,6) NOT NULL,
-        location_lon DECIMAL(9,6) NOT NULL,
-        precipitation_mm DECIMAL(5,2),
-        temperature_c DECIMAL(4,2),
-        pressure_hpa DECIMAL(7,2),
-        wind_speed_mps DECIMAL(4,2),
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+        location_lat DOUBLE PRECISION NOT NULL,
+        location_lon DOUBLE PRECISION NOT NULL,
+        precipitation_mm DOUBLE PRECISION,
+        temperature_c DOUBLE PRECISION,
+        pressure_hpa DOUBLE PRECISION,
+        wind_speed_mps DOUBLE PRECISION,
+        relative_humidity_percent DOUBLE PRECISION,
         symbol_code TEXT,
-        forecast_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(timestamp, location_lat, location_lon)
+        forecast_created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        PRIMARY KEY (timestamp, location_lat, location_lon)
       );
     `);
     
