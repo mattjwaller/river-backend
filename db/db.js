@@ -84,6 +84,7 @@ const initializeDatabase = async () => {
         temperature_c DECIMAL(4,2),
         pressure_hpa DECIMAL(7,2),
         wind_speed_mps DECIMAL(4,2),
+        symbol_code TEXT,
         forecast_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(timestamp, location_lat, location_lon)
       );

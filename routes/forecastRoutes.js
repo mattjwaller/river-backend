@@ -30,20 +30,22 @@ router.post('/fetch', async (req, res) => {
       const timestamp = new Date(entry.time);
       const details = entry.data.instant.details;
       const next1Hours = entry.data.next_1_hours?.details || {};
+      const symbolCode = entry.data.next_1_hours?.summary?.symbol_code || 'unknown';
 
       await db.pool.query(`
         INSERT INTO weather_forecast (
           timestamp, location_lat, location_lon,
           precipitation_mm, temperature_c, pressure_hpa, wind_speed_mps,
-          forecast_created_at
+          symbol_code, forecast_created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (timestamp, location_lat, location_lon)
         DO UPDATE SET
           precipitation_mm = EXCLUDED.precipitation_mm,
           temperature_c = EXCLUDED.temperature_c,
           pressure_hpa = EXCLUDED.pressure_hpa,
           wind_speed_mps = EXCLUDED.wind_speed_mps,
+          symbol_code = EXCLUDED.symbol_code,
           forecast_created_at = EXCLUDED.forecast_created_at
       `, [
         timestamp,
@@ -53,6 +55,7 @@ router.post('/fetch', async (req, res) => {
         details.air_temperature,
         details.air_pressure_at_sea_level,
         details.wind_speed,
+        symbolCode,
         forecastCreatedAt
       ]);
     }
@@ -197,7 +200,8 @@ router.get('/summary', async (req, res) => {
         temperature_c,
         wind_speed_mps,
         precipitation_mm,
-        pressure_hpa
+        pressure_hpa,
+        symbol_code
       FROM latest_forecast
     `, [now.toISOString()]);
 
@@ -208,7 +212,15 @@ router.get('/summary', async (req, res) => {
           DATE(timestamp) as forecast_date,
           MIN(temperature_c) as min_temp,
           MAX(temperature_c) as max_temp,
-          SUM(precipitation_mm) as total_precip
+          SUM(precipitation_mm) as total_precip,
+          (
+            SELECT symbol_code
+            FROM weather_forecast w2
+            WHERE DATE(w2.timestamp) = DATE(w1.timestamp)
+            AND EXTRACT(HOUR FROM w2.timestamp) = 12
+            ORDER BY w2.timestamp ASC
+            LIMIT 1
+          ) as day_condition
         FROM weather_forecast w1
         WHERE timestamp BETWEEN $1 AND $2
         GROUP BY DATE(timestamp)
@@ -219,7 +231,8 @@ router.get('/summary', async (req, res) => {
         forecast_date,
         ROUND(min_temp::numeric, 1) as min_temp,
         ROUND(max_temp::numeric, 1) as max_temp,
-        ROUND(total_precip::numeric, 1) as total_precip
+        ROUND(total_precip::numeric, 1) as total_precip,
+        day_condition
       FROM daily_forecast
     `, [now.toISOString(), endTime.toISOString()]);
 
@@ -228,7 +241,8 @@ router.get('/summary', async (req, res) => {
       temperature: Math.round(currentResult.rows[0].temperature_c),
       wind: Math.round(currentResult.rows[0].wind_speed_mps),
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
-      pressure: Math.round(currentResult.rows[0].pressure_hpa)
+      pressure: Math.round(currentResult.rows[0].pressure_hpa),
+      condition: currentResult.rows[0].symbol_code || 'unknown'
     } : null;
 
     const forecast = forecastResult.rows.map((row, index) => {
@@ -238,6 +252,7 @@ router.get('/summary', async (req, res) => {
       
       return {
         day,
+        condition: row.day_condition || 'unknown',
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
         rain: Math.round(row.total_precip * 10) / 10
