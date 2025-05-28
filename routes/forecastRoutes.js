@@ -195,10 +195,9 @@ router.get('/summary', async (req, res) => {
       SELECT 
         timestamp,
         temperature_c,
-        relative_humidity,
         wind_speed_mps,
         precipitation_mm,
-        symbol_code
+        pressure_hpa
       FROM latest_forecast
     `, [now.toISOString()]);
 
@@ -209,14 +208,7 @@ router.get('/summary', async (req, res) => {
           DATE(timestamp) as forecast_date,
           MIN(temperature_c) as min_temp,
           MAX(temperature_c) as max_temp,
-          (
-            SELECT symbol_code
-            FROM weather_forecast w2
-            WHERE DATE(w2.timestamp) = DATE(w1.timestamp)
-            AND EXTRACT(HOUR FROM w2.timestamp) = 12
-            ORDER BY w2.timestamp ASC
-            LIMIT 1
-          ) as day_condition
+          SUM(precipitation_mm) as total_precip
         FROM weather_forecast w1
         WHERE timestamp BETWEEN $1 AND $2
         GROUP BY DATE(timestamp)
@@ -227,17 +219,16 @@ router.get('/summary', async (req, res) => {
         forecast_date,
         ROUND(min_temp::numeric, 1) as min_temp,
         ROUND(max_temp::numeric, 1) as max_temp,
-        day_condition
+        ROUND(total_precip::numeric, 1) as total_precip
       FROM daily_forecast
     `, [now.toISOString(), endTime.toISOString()]);
 
     // Format the response
     const current = currentResult.rows[0] ? {
       temperature: Math.round(currentResult.rows[0].temperature_c),
-      humidity: Math.round(currentResult.rows[0].relative_humidity),
       wind: Math.round(currentResult.rows[0].wind_speed_mps),
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
-      condition: currentResult.rows[0].symbol_code || 'unknown'
+      pressure: Math.round(currentResult.rows[0].pressure_hpa)
     } : null;
 
     const forecast = forecastResult.rows.map((row, index) => {
@@ -247,9 +238,9 @@ router.get('/summary', async (req, res) => {
       
       return {
         day,
-        condition: row.day_condition || 'unknown',
         max: Math.round(row.max_temp),
-        min: Math.round(row.min_temp)
+        min: Math.round(row.min_temp),
+        rain: Math.round(row.total_precip * 10) / 10
       };
     });
 
