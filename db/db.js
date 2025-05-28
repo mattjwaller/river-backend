@@ -88,6 +88,19 @@ const initializeDatabase = async () => {
         forecast_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(timestamp, location_lat, location_lon)
       );
+
+      -- Add symbol_code column if it doesn't exist
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'weather_forecast' 
+          AND column_name = 'symbol_code'
+        ) THEN
+          ALTER TABLE weather_forecast ADD COLUMN symbol_code TEXT;
+        END IF;
+      END $$;
     `);
     
     console.log('Database tables initialized successfully');
