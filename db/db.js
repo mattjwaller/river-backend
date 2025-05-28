@@ -89,6 +89,19 @@ const initializeDatabase = async () => {
         forecast_created_at TIMESTAMP WITH TIME ZONE NOT NULL,
         PRIMARY KEY (timestamp, location_lat, location_lon)
       );
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'weather_forecast' 
+          AND column_name = 'relative_humidity_percent'
+        ) THEN
+          ALTER TABLE weather_forecast 
+          ADD COLUMN relative_humidity_percent DOUBLE PRECISION;
+        END IF;
+      END $$;
     `);
     
     console.log('Database tables initialized successfully');
