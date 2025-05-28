@@ -123,6 +123,12 @@ router.get("/water-level/history", async (req, res) => {
     } else if (resolution === 'hourly') {
       groupBy = "DATE_TRUNC('hour', timestamp)";
       selectExtra = ", DATE_TRUNC('hour', timestamp) as ts";
+    } else if (resolution === '15min') {
+      groupBy = "DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 15) * interval '1 minute')";
+      selectExtra = ", DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 15) * interval '1 minute') as ts";
+    } else if (resolution === '5min') {
+      groupBy = "DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 5) * interval '1 minute')";
+      selectExtra = ", DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 5) * interval '1 minute') as ts";
     } else {
       groupBy = null;
     }
@@ -130,7 +136,10 @@ router.get("/water-level/history", async (req, res) => {
     // Query for the data points
     let dataQuery, dataValues;
     if (groupBy) {
-      const truncExpr = resolution === 'daily' ? "DATE_TRUNC('day', timestamp)" : "DATE_TRUNC('hour', timestamp)";
+      const truncExpr = resolution === 'daily' ? "DATE_TRUNC('day', timestamp)" : 
+                        resolution === 'hourly' ? "DATE_TRUNC('hour', timestamp)" :
+                        resolution === '15min' ? "DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 15) * interval '1 minute')" :
+                        "DATE_TRUNC('minute', timestamp - (EXTRACT(MINUTE FROM timestamp) % 5) * interval '1 minute')";
       dataQuery = `
         SELECT
           ${truncExpr} as ts,
