@@ -176,4 +176,91 @@ router.get('/latest', async (req, res) => {
   }
 });
 
+// Get weather summary (current conditions + 3-day forecast)
+router.get('/summary', async (req, res) => {
+  console.log('GET /forecast/summary request received');
+  try {
+    const now = moment();
+    const endTime = now.clone().add(72, 'hours');
+
+    // Get current conditions (latest forecast)
+    const currentResult = await db.pool.query(`
+      WITH latest_forecast AS (
+        SELECT DISTINCT ON (timestamp) *
+        FROM weather_forecast
+        WHERE timestamp >= $1
+        ORDER BY timestamp ASC
+        LIMIT 1
+      )
+      SELECT 
+        timestamp,
+        temperature_c,
+        relative_humidity,
+        wind_speed_mps,
+        precipitation_mm,
+        symbol_code
+      FROM latest_forecast
+    `, [now.toISOString()]);
+
+    // Get 3-day forecast summary
+    const forecastResult = await db.pool.query(`
+      WITH daily_forecast AS (
+        SELECT 
+          DATE(timestamp) as forecast_date,
+          MIN(temperature_c) as min_temp,
+          MAX(temperature_c) as max_temp,
+          (
+            SELECT symbol_code
+            FROM weather_forecast w2
+            WHERE DATE(w2.timestamp) = DATE(w1.timestamp)
+            AND EXTRACT(HOUR FROM w2.timestamp) = 12
+            ORDER BY w2.timestamp ASC
+            LIMIT 1
+          ) as day_condition
+        FROM weather_forecast w1
+        WHERE timestamp BETWEEN $1 AND $2
+        GROUP BY DATE(timestamp)
+        ORDER BY DATE(timestamp)
+        LIMIT 3
+      )
+      SELECT 
+        forecast_date,
+        ROUND(min_temp::numeric, 1) as min_temp,
+        ROUND(max_temp::numeric, 1) as max_temp,
+        day_condition
+      FROM daily_forecast
+    `, [now.toISOString(), endTime.toISOString()]);
+
+    // Format the response
+    const current = currentResult.rows[0] ? {
+      temperature: Math.round(currentResult.rows[0].temperature_c),
+      humidity: Math.round(currentResult.rows[0].relative_humidity),
+      wind: Math.round(currentResult.rows[0].wind_speed_mps),
+      rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
+      condition: currentResult.rows[0].symbol_code || 'unknown'
+    } : null;
+
+    const forecast = forecastResult.rows.map((row, index) => {
+      const day = index === 0 ? 'Today' : 
+                 index === 1 ? 'Tomorrow' : 
+                 moment(row.forecast_date).format('dddd');
+      
+      return {
+        day,
+        condition: row.day_condition || 'unknown',
+        max: Math.round(row.max_temp),
+        min: Math.round(row.min_temp)
+      };
+    });
+
+    res.json({
+      current,
+      forecast
+    });
+  } catch (err) {
+    console.error('Error fetching weather summary:', err);
+    res.status(500).json({ error: 'Failed to fetch weather summary' });
+  }
+});
+
 module.exports = router; 
