@@ -33,10 +33,16 @@ router.post('/fetch', async (req, res) => {
       const timestamp = new Date(entry.time);
       const details = entry.data.instant.details;
       const next1Hours = entry.data.next_1_hours?.details || {};
-      const symbolCode = entry.data.next_1_hours?.summary?.symbol_code || 
-                        entry.data.next_6_hours?.summary?.symbol_code || 
-                        entry.data.next_12_hours?.summary?.symbol_code || 
-                        'unknown';
+      let symbolCode = 'unknown';
+      if (entry.data.next_1_hours?.summary?.symbol_code) {
+        symbolCode = entry.data.next_1_hours.summary.symbol_code;
+      } else if (entry.data.next_6_hours?.summary?.symbol_code) {
+        symbolCode = entry.data.next_6_hours.summary.symbol_code;
+      } else if (entry.data.next_12_hours?.summary?.symbol_code) {
+        symbolCode = entry.data.next_12_hours.summary.symbol_code;
+      } else {
+        console.warn(`No symbol_code available for ${timestamp.toISOString()}`);
+      }
 
       // Log the first entry's data for verification
       if (storedCount === 0) {
@@ -156,9 +162,7 @@ router.get('/', async (req, res) => {
     const endTime = now.clone().add(hours, 'hours');
 
     // Determine if we need to normalize to 6-hour blocks
-    const needsNormalization = hours > 48;
-    const timeBlock = needsNormalization ? '6 hours' : '1 hour';
-
+    const timeBlock = hours > 48 ? '6 hours' : '1 hour';
     // Get the forecast data with appropriate time blocks
     const result = await db.pool.query(`
       WITH latest_forecast AS (
@@ -170,11 +174,11 @@ router.get('/', async (req, res) => {
       normalized_data AS (
         SELECT 
           CASE 
-            WHEN $3 = '6 hours' THEN 
-              date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
-            ELSE 
-              timestamp
-          END as block_start,
+  WHEN $3 = '6 hours' THEN 
+    date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
+  ELSE 
+    timestamp
+END as block_start,
           location_lat,
           location_lon,
           SUM(precipitation_mm) as precipitation_mm,
@@ -185,11 +189,11 @@ router.get('/', async (req, res) => {
         FROM latest_forecast
         GROUP BY 
           CASE 
-            WHEN $3 = '6 hours' THEN 
-              date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
-            ELSE 
-              timestamp
-          END,
+  WHEN $3 = '6 hours' THEN 
+    date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
+  ELSE 
+    timestamp
+END,
           location_lat,
           location_lon
       )
