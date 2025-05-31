@@ -3,6 +3,76 @@ const router = express.Router();
 const fetch = require('node-fetch');
 const db = require('../db/db');
 const moment = require('moment');
+const conditions = require('../en.json');
+
+// Map MET.no symbol codes to our condition codes
+const symbolCodeMap = {
+  'clearsky_day': 'Sun',
+  'clearsky_night': 'Sun',
+  'fair_day': 'LightCloud',
+  'fair_night': 'LightCloud',
+  'partlycloudy_day': 'PartlyCloud',
+  'partlycloudy_night': 'PartlyCloud',
+  'cloudy': 'Cloud',
+  'rainshowers_day': 'LightRainSun',
+  'rainshowers_night': 'LightRain',
+  'rainshowersandthunder_day': 'LightRainThunderSun',
+  'rainshowersandthunder_night': 'LightRainThunder',
+  'sleet': 'Sleet',
+  'sleetandthunder': 'SleetThunder',
+  'sleetday': 'SleetSun',
+  'sleetnight': 'Sleet',
+  'sleetandthunderday': 'SleetSunThunder',
+  'sleetandthundernight': 'SleetThunder',
+  'snow': 'Snow',
+  'snowandthunder': 'SnowThunder',
+  'snowday': 'SnowSun',
+  'snownight': 'Snow',
+  'snowandthunderday': 'SnowSunThunder',
+  'snowandthundernight': 'SnowThunder',
+  'fog': 'Fog',
+  'drizzle': 'Drizzle',
+  'drizzleandthunder': 'DrizzleThunder',
+  'drizzleday': 'DrizzleSun',
+  'drizzlenight': 'Drizzle',
+  'drizzleandthunderday': 'DrizzleThunderSun',
+  'drizzleandthundernight': 'DrizzleThunder',
+  'rain': 'Rain',
+  'rainandthunder': 'RainThunder',
+  'rainday': 'RainSun',
+  'rainnight': 'Rain',
+  'rainandthunderday': 'RainThunderSun',
+  'rainandthundernight': 'RainThunder',
+  'lightsleet': 'LightSleet',
+  'heavysleet': 'HeavySleet',
+  'lightsleetandthunder': 'LightSleetThunder',
+  'heavysleetandthunder': 'HeavySleetThunder',
+  'lightsleetday': 'LightSleetSun',
+  'heavysleetday': 'HeavySleetSun',
+  'lightsleetnight': 'LightSleet',
+  'heavysleetnight': 'HeavySleet',
+  'lightsleetandthunderday': 'LightSleetThunderSun',
+  'heavysleetandthunderday': 'HeavySleetThunderSun',
+  'lightsleetandthundernight': 'LightSleetThunder',
+  'heavysleetandthundernight': 'HeavySleetThunder',
+  'lightsnow': 'LightSnow',
+  'heavysnow': 'HeavySnow',
+  'lightsnowandthunder': 'LightSnowThunder',
+  'heavysnowandthunder': 'HeavySnowThunder',
+  'lightsnowday': 'LightSnowSun',
+  'heavysnowday': 'HeavySnowSun',
+  'lightsnownight': 'LightSnow',
+  'heavysnownight': 'HeavySnow',
+  'lightsnowandthunderday': 'LightSnowThunderSun',
+  'heavysnowandthunderday': 'HeavySnowThunderSun',
+  'lightsnowandthundernight': 'LightSnowThunder',
+  'heavysnowandthundernight': 'HeavySnowThunder'
+};
+
+// Helper function to map MET.no symbol code to our condition code
+function mapSymbolCode(symbolCode) {
+  return symbolCodeMap[symbolCode] || 'LightCloud';
+}
 
 // Fetch and store weather forecast
 router.post('/fetch', async (req, res) => {
@@ -35,11 +105,11 @@ router.post('/fetch', async (req, res) => {
       const next1Hours = entry.data.next_1_hours?.details || {};
       let symbolCode = 'unknown';
       if (entry.data.next_1_hours?.summary?.symbol_code) {
-        symbolCode = entry.data.next_1_hours.summary.symbol_code;
+        symbolCode = mapSymbolCode(entry.data.next_1_hours.summary.symbol_code);
       } else if (entry.data.next_6_hours?.summary?.symbol_code) {
-        symbolCode = entry.data.next_6_hours.summary.symbol_code;
+        symbolCode = mapSymbolCode(entry.data.next_6_hours.summary.symbol_code);
       } else if (entry.data.next_12_hours?.summary?.symbol_code) {
-        symbolCode = entry.data.next_12_hours.summary.symbol_code;
+        symbolCode = mapSymbolCode(entry.data.next_12_hours.summary.symbol_code);
       } else {
         console.warn(`No symbol_code available for ${timestamp.toISOString()}`);
       }
@@ -51,6 +121,7 @@ router.post('/fetch', async (req, res) => {
           temperature: details.air_temperature,
           humidity: details.relative_humidity,
           condition: symbolCode,
+          condition_text: conditions[symbolCode],
           precipitation: next1Hours.precipitation_amount,
           cloud_cover: details.cloud_area_fraction,
           wind_direction: details.wind_from_direction,
@@ -86,7 +157,7 @@ router.post('/fetch', async (req, res) => {
         details.air_temperature,
         details.air_pressure_at_sea_level,
         details.wind_speed,
-        humidity,  // Will be null if not present in the API response
+        humidity,
         symbolCode,
         forecastCreatedAt
       ]);
@@ -324,7 +395,7 @@ router.get('/summary', async (req, res) => {
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
       pressure: Math.round(currentResult.rows[0].pressure_hpa),
       humidity: Math.round(currentResult.rows[0].relative_humidity_percent),
-      condition: currentResult.rows[0].symbol_code
+      condition: conditions[currentResult.rows[0].symbol_code] || 'Unknown'
     } : null;
 
     const forecast = forecastResult.rows.map((row, index) => {
@@ -334,7 +405,7 @@ router.get('/summary', async (req, res) => {
       
       return {
         day,
-        condition: row.day_condition,
+        condition: conditions[row.day_condition] || 'Unknown',
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
         rain: Math.round(row.total_precip * 10) / 10,
