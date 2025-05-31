@@ -54,9 +54,13 @@ router.post('/fetch', async (req, res) => {
           precipitation: next1Hours.precipitation_amount,
           cloud_cover: details.cloud_area_fraction,
           wind_direction: details.wind_from_direction,
-          wind_speed: details.wind_speed
+          wind_speed: details.wind_speed,
+          has_humidity: 'relative_humidity' in details
         });
       }
+
+      // Only include humidity if it exists in the details
+      const humidity = 'relative_humidity' in details ? details.relative_humidity : null;
 
       await db.pool.query(`
         INSERT INTO weather_forecast (
@@ -82,7 +86,7 @@ router.post('/fetch', async (req, res) => {
         details.air_temperature,
         details.air_pressure_at_sea_level,
         details.wind_speed,
-        details.relative_humidity,  // This is now a number from the API
+        humidity,  // Will be null if not present in the API response
         symbolCode,
         forecastCreatedAt
       ]);
@@ -98,7 +102,8 @@ router.post('/fetch', async (req, res) => {
         MIN(relative_humidity_percent) as min_humidity,
         MAX(relative_humidity_percent) as max_humidity,
         MIN(temperature_c) as min_temp,
-        MAX(temperature_c) as max_temp
+        MAX(temperature_c) as max_temp,
+        COUNT(*) FILTER (WHERE relative_humidity_percent IS NULL) as null_humidity_count
       FROM weather_forecast 
       WHERE forecast_created_at = $1
     `, [forecastCreatedAt]);
@@ -117,6 +122,7 @@ router.post('/fetch', async (req, res) => {
       - Processed: ${storedCount} entries
       - Stored in database: ${storedResult.rows[0].count} entries
       - Humidity data present: ${verifyResult.rows[0].humidity_count} entries
+      - Humidity data missing: ${verifyResult.rows[0].null_humidity_count} entries
       - Condition data present: ${verifyResult.rows[0].condition_count} entries
       - Humidity range: ${verifyResult.rows[0].min_humidity} to ${verifyResult.rows[0].max_humidity}
       - Temperature range: ${verifyResult.rows[0].min_temp} to ${verifyResult.rows[0].max_temp}
