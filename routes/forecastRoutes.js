@@ -25,7 +25,10 @@ router.post('/fetch', async (req, res) => {
     const data = await response.json();
     const forecastCreatedAt = new Date();
     
+    console.log(`Received ${data.properties.timeseries.length} forecast entries from MET.no`);
+    
     // Process each hourly forecast
+    let storedCount = 0;
     for (const entry of data.properties.timeseries) {
       const timestamp = new Date(entry.time);
       const details = entry.data.instant.details;
@@ -60,10 +63,35 @@ router.post('/fetch', async (req, res) => {
         symbolCode,
         forecastCreatedAt
       ]);
+      storedCount++;
     }
 
-    console.log('Weather forecast data updated successfully');
-    res.json({ message: 'Weather forecast data updated successfully' });
+    // Verify the number of entries stored
+    const storedResult = await db.pool.query(`
+      SELECT COUNT(*) as count 
+      FROM weather_forecast 
+      WHERE forecast_created_at = $1
+    `, [forecastCreatedAt]);
+
+    console.log(`Weather forecast data updated successfully:
+      - Received from MET.no: ${data.properties.timeseries.length} entries
+      - Processed: ${storedCount} entries
+      - Stored in database: ${storedResult.rows[0].count} entries
+      - Time range: ${new Date(data.properties.timeseries[0].time).toISOString()} to ${new Date(data.properties.timeseries[data.properties.timeseries.length-1].time).toISOString()}
+    `);
+
+    res.json({ 
+      message: 'Weather forecast data updated successfully',
+      stats: {
+        received: data.properties.timeseries.length,
+        processed: storedCount,
+        stored: storedResult.rows[0].count,
+        time_range: {
+          start: new Date(data.properties.timeseries[0].time).toISOString(),
+          end: new Date(data.properties.timeseries[data.properties.timeseries.length-1].time).toISOString()
+        }
+      }
+    });
   } catch (err) {
     console.error('Error fetching weather forecast:', err);
     res.status(500).json({ error: 'Failed to fetch weather forecast' });
