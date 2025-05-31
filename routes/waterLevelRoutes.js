@@ -22,7 +22,8 @@ router.get('/latest', async (req, res) => {
           MIN(timestamp) FILTER (WHERE level_cm = MIN(level_cm)) as min_timestamp,
           MIN(timestamp) FILTER (WHERE level_cm = MAX(level_cm)) as max_timestamp
         FROM water_level
-        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        WHERE timestamp >= (SELECT timestamp - INTERVAL '24 hours' FROM latest_level)
+          AND timestamp <= (SELECT timestamp FROM latest_level)
       )
       SELECT 
         l.id,
@@ -43,7 +44,39 @@ router.get('/latest', async (req, res) => {
       return res.status(404).json({ error: 'No water level data available' });
     }
 
-    res.json(result.rows[0]);
+    // Log the raw database result
+    console.log('Raw database result:', {
+      row: result.rows[0],
+      min_level_type: typeof result.rows[0].min_level,
+      max_level_type: typeof result.rows[0].max_level,
+      min_level_value: result.rows[0].min_level,
+      max_level_value: result.rows[0].max_level
+    });
+
+    // Create the response object explicitly
+    const response = {
+      id: result.rows[0].id,
+      level_cm: result.rows[0].level_cm,
+      trend: result.rows[0].trend,
+      timestamp: result.rows[0].timestamp,
+      reading_count: result.rows[0].reading_count,
+      min_level: Number(result.rows[0].min_level),
+      max_level: Number(result.rows[0].max_level),
+      avg_level: Number(result.rows[0].avg_level),
+      min_timestamp: result.rows[0].min_timestamp,
+      max_timestamp: result.rows[0].max_timestamp
+    };
+
+    // Log the response object
+    console.log('Response object:', {
+      response,
+      min_level_type: typeof response.min_level,
+      max_level_type: typeof response.max_level,
+      min_level_value: response.min_level,
+      max_level_value: response.max_level
+    });
+
+    res.json(response);
   } catch (err) {
     console.error('Error fetching latest water level:', err);
     res.status(500).json({ error: 'Failed to fetch latest water level' });
