@@ -35,6 +35,17 @@ router.post('/fetch', async (req, res) => {
       const next1Hours = entry.data.next_1_hours?.details || {};
       const symbolCode = entry.data.next_1_hours?.summary?.symbol_code || 'unknown';
 
+      // Log the first entry's data for verification
+      if (storedCount === 0) {
+        console.log('Sample forecast entry:', {
+          timestamp: timestamp.toISOString(),
+          temperature: details.air_temperature,
+          humidity: details.relative_humidity,
+          condition: symbolCode,
+          precipitation: next1Hours.precipitation_amount
+        });
+      }
+
       await db.pool.query(`
         INSERT INTO weather_forecast (
           timestamp, location_lat, location_lon,
@@ -269,7 +280,7 @@ router.get('/summary', async (req, res) => {
       wind: Math.round(currentResult.rows[0].wind_speed_mps),
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
       pressure: Math.round(currentResult.rows[0].pressure_hpa),
-      humidity: Math.round(currentResult.rows[0].relative_humidity_percent),
+      humidity: Math.round(currentResult.rows[0].relative_humidity_percent || 0),
       condition: currentResult.rows[0].symbol_code || 'unknown'
     } : null;
 
@@ -284,8 +295,14 @@ router.get('/summary', async (req, res) => {
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
         rain: Math.round(row.total_precip * 10) / 10,
-        humidity: Math.round(row.avg_humidity)
+        humidity: Math.round(row.avg_humidity || 0)
       };
+    });
+
+    // Log the data for debugging
+    console.log('Weather summary data:', {
+      current: currentResult.rows[0],
+      forecast: forecastResult.rows
     });
 
     res.json({
