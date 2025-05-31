@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
             WHEN $3 = '6 hours' THEN 
               date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
             ELSE 
-              date_trunc('hour', timestamp)
+              timestamp
           END as block_start,
           location_lat,
           location_lon,
@@ -123,7 +123,7 @@ router.get('/', async (req, res) => {
             WHEN $3 = '6 hours' THEN 
               date_trunc('hour', timestamp - (EXTRACT(HOUR FROM timestamp) % 6) * interval '1 hour')
             ELSE 
-              date_trunc('hour', timestamp)
+              timestamp
           END,
           location_lat,
           location_lon

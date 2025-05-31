@@ -85,6 +85,47 @@ Available Commands:
 - `GET /api/data/weather/current` - Get current weather
 - `GET /api/data/weather/forecast` - Get weather forecast
 
+### Weather Forecast API
+The weather forecast API provides access to weather data from the MET.no API, with data stored and served locally.
+
+#### Endpoints
+
+- `POST /api/forecast/fetch` - Fetch and store latest weather forecast data
+  - Fetches data from MET.no API for the configured location
+  - Updates the local database with the latest forecast
+  - Called automatically every hour via cron job
+
+- `GET /api/forecast` - Get forecast for a specified time range
+  - Query Parameters:
+    - `range` (string): Time range to fetch (e.g., "48h", "7d")
+  - Response includes:
+    - `meta`: Range info, start/end times, data points count, time_block, normalized
+    - `data`: Array of forecast points with temperature, precipitation, wind, etc.
+  - Data Normalization:
+    - For ranges ≤ 48 hours: Data points are returned hourly
+    - For ranges > 48 hours: Data is normalized to 6-hour blocks to reduce data volume
+    - The `meta` object includes `time_block` and `normalized` fields to indicate the resolution
+
+- `GET /api/forecast/latest` - Get the most recent forecast data
+  - Returns all data points from the most recent forecast fetch
+  - Useful for debugging or getting raw forecast data
+
+- `GET /api/forecast/summary` - Get current conditions and 3-day forecast
+  - Returns:
+    - `current`: Current weather conditions (temperature, wind, rain, pressure, humidity)
+    - `forecast`: 3-day forecast with daily min/max temperatures, precipitation, and conditions
+
+#### Data Format
+
+Forecast data points include:
+- `timestamp`: Time of the forecast
+- `temperature_c`: Temperature in Celsius
+- `precipitation_mm`: Precipitation amount in millimeters
+- `pressure_hpa`: Air pressure in hectopascals
+- `wind_speed_mps`: Wind speed in meters per second
+- `relative_humidity_percent`: Relative humidity percentage
+- `symbol_code`: Weather condition code (e.g., "partlycloudy_day")
+
 ## Setup
 
 1. Install dependencies:
