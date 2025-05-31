@@ -33,16 +33,22 @@ router.post('/fetch', async (req, res) => {
       const timestamp = new Date(entry.time);
       const details = entry.data.instant.details;
       const next1Hours = entry.data.next_1_hours?.details || {};
-      const symbolCode = entry.data.next_1_hours?.summary?.symbol_code || 'unknown';
+      const symbolCode = entry.data.next_1_hours?.summary?.symbol_code || 
+                        entry.data.next_6_hours?.summary?.symbol_code || 
+                        entry.data.next_12_hours?.summary?.symbol_code || 
+                        'unknown';
 
       // Log the first entry's data for verification
       if (storedCount === 0) {
-        console.log('Sample forecast entry:', {
+        console.log('Sample forecast entry from MET.no:', {
           timestamp: timestamp.toISOString(),
           temperature: details.air_temperature,
           humidity: details.relative_humidity,
           condition: symbolCode,
-          precipitation: next1Hours.precipitation_amount
+          precipitation: next1Hours.precipitation_amount,
+          cloud_cover: details.cloud_area_fraction,
+          wind_direction: details.wind_from_direction,
+          wind_speed: details.wind_speed
         });
       }
 
@@ -70,12 +76,28 @@ router.post('/fetch', async (req, res) => {
         details.air_temperature,
         details.air_pressure_at_sea_level,
         details.wind_speed,
-        details.relative_humidity,
+        details.relative_humidity,  // This is now a number from the API
         symbolCode,
         forecastCreatedAt
       ]);
       storedCount++;
     }
+
+    // Verify the stored data
+    const verifyResult = await db.pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(relative_humidity_percent) as humidity_count,
+        COUNT(symbol_code) as condition_count,
+        MIN(relative_humidity_percent) as min_humidity,
+        MAX(relative_humidity_percent) as max_humidity,
+        MIN(temperature_c) as min_temp,
+        MAX(temperature_c) as max_temp
+      FROM weather_forecast 
+      WHERE forecast_created_at = $1
+    `, [forecastCreatedAt]);
+
+    console.log('Data verification:', verifyResult.rows[0]);
 
     // Verify the number of entries stored
     const storedResult = await db.pool.query(`
@@ -88,6 +110,10 @@ router.post('/fetch', async (req, res) => {
       - Received from MET.no: ${data.properties.timeseries.length} entries
       - Processed: ${storedCount} entries
       - Stored in database: ${storedResult.rows[0].count} entries
+      - Humidity data present: ${verifyResult.rows[0].humidity_count} entries
+      - Condition data present: ${verifyResult.rows[0].condition_count} entries
+      - Humidity range: ${verifyResult.rows[0].min_humidity} to ${verifyResult.rows[0].max_humidity}
+      - Temperature range: ${verifyResult.rows[0].min_temp} to ${verifyResult.rows[0].max_temp}
       - Time range: ${new Date(data.properties.timeseries[0].time).toISOString()} to ${new Date(data.properties.timeseries[data.properties.timeseries.length-1].time).toISOString()}
     `);
 
