@@ -105,11 +105,11 @@ router.post('/fetch', async (req, res) => {
       const next1Hours = entry.data.next_1_hours?.details || {};
       let symbolCode = 'unknown';
       if (entry.data.next_1_hours?.summary?.symbol_code) {
-        symbolCode = mapSymbolCode(entry.data.next_1_hours.summary.symbol_code);
+        symbolCode = entry.data.next_1_hours.summary.symbol_code;
       } else if (entry.data.next_6_hours?.summary?.symbol_code) {
-        symbolCode = mapSymbolCode(entry.data.next_6_hours.summary.symbol_code);
+        symbolCode = entry.data.next_6_hours.summary.symbol_code;
       } else if (entry.data.next_12_hours?.summary?.symbol_code) {
-        symbolCode = mapSymbolCode(entry.data.next_12_hours.summary.symbol_code);
+        symbolCode = entry.data.next_12_hours.summary.symbol_code;
       } else {
         console.warn(`No symbol_code available for ${timestamp.toISOString()}`);
       }
@@ -121,7 +121,6 @@ router.post('/fetch', async (req, res) => {
           temperature: details.air_temperature,
           humidity: details.relative_humidity,
           condition: symbolCode,
-          condition_text: conditions[symbolCode],
           precipitation: next1Hours.precipitation_amount,
           cloud_cover: details.cloud_area_fraction,
           wind_direction: details.wind_from_direction,
@@ -395,7 +394,7 @@ router.get('/summary', async (req, res) => {
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
       pressure: Math.round(currentResult.rows[0].pressure_hpa),
       humidity: Math.round(currentResult.rows[0].relative_humidity_percent),
-      condition: conditions[currentResult.rows[0].symbol_code] || 'Unknown'
+      condition: currentResult.rows[0].symbol_code
     } : null;
 
     const forecast = forecastResult.rows.map((row, index) => {
@@ -405,7 +404,7 @@ router.get('/summary', async (req, res) => {
       
       return {
         day,
-        condition: conditions[row.day_condition] || 'Unknown',
+        condition: row.day_condition,
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
         rain: Math.round(row.total_precip * 10) / 10,
