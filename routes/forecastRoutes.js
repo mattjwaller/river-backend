@@ -225,10 +225,17 @@ END,
         data_points: result.rows.length,
         forecast_created_at: result.rows[0]?.forecast_created_at || null,
         time_block: timeBlock,
-        normalized: needsNormalization
+        normalized: hours > 48
       },
       data: result.rows
     };
+
+    console.log(`Forecast data retrieved:
+      - Time range: ${startTime.toISOString()} to ${endTime.toISOString()}
+      - Data points: ${result.rows.length}
+      - Time block: ${timeBlock}
+      - Normalized: ${hours > 48}
+    `);
 
     res.json(response);
   } catch (err) {
