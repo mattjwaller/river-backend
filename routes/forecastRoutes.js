@@ -268,8 +268,8 @@ router.get('/summary', async (req, res) => {
         wind_speed_mps,
         precipitation_mm,
         pressure_hpa,
-        relative_humidity_percent,
-        symbol_code
+        COALESCE(relative_humidity_percent, 0) as relative_humidity_percent,
+        COALESCE(symbol_code, 'unknown') as symbol_code
       FROM latest_forecast
     `, [now.toISOString()]);
 
@@ -281,8 +281,8 @@ router.get('/summary', async (req, res) => {
           MIN(temperature_c) as min_temp,
           MAX(temperature_c) as max_temp,
           SUM(precipitation_mm) as total_precip,
-          AVG(relative_humidity_percent) as avg_humidity,
-          MODE() WITHIN GROUP (ORDER BY symbol_code) as day_condition
+          AVG(COALESCE(relative_humidity_percent, 0)) as avg_humidity,
+          MODE() WITHIN GROUP (ORDER BY COALESCE(symbol_code, 'unknown')) as day_condition
         FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
         GROUP BY DATE(timestamp)
@@ -306,8 +306,8 @@ router.get('/summary', async (req, res) => {
       wind: Math.round(currentResult.rows[0].wind_speed_mps),
       rain: Math.round(currentResult.rows[0].precipitation_mm * 10) / 10,
       pressure: Math.round(currentResult.rows[0].pressure_hpa),
-      humidity: Math.round(currentResult.rows[0].relative_humidity_percent || 0),
-      condition: currentResult.rows[0].symbol_code || 'unknown'
+      humidity: Math.round(currentResult.rows[0].relative_humidity_percent),
+      condition: currentResult.rows[0].symbol_code
     } : null;
 
     const forecast = forecastResult.rows.map((row, index) => {
@@ -317,18 +317,28 @@ router.get('/summary', async (req, res) => {
       
       return {
         day,
-        condition: row.day_condition || 'unknown',
+        condition: row.day_condition,
         max: Math.round(row.max_temp),
         min: Math.round(row.min_temp),
         rain: Math.round(row.total_precip * 10) / 10,
-        humidity: Math.round(row.avg_humidity || 0)
+        humidity: Math.round(row.avg_humidity)
       };
     });
 
     // Log the data for debugging
     console.log('Weather summary data:', {
       current: currentResult.rows[0],
-      forecast: forecastResult.rows
+      forecast: forecastResult.rows,
+      raw_data: {
+        current_query: currentResult.rows[0] ? {
+          humidity: currentResult.rows[0].relative_humidity_percent,
+          condition: currentResult.rows[0].symbol_code
+        } : null,
+        forecast_query: forecastResult.rows.map(r => ({
+          humidity: r.avg_humidity,
+          condition: r.day_condition
+        }))
+      }
     });
 
     res.json({
