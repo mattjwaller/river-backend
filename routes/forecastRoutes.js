@@ -239,6 +239,7 @@ router.get('/', async (req, res) => {
 
     // Determine if we need to normalize to 6-hour blocks
     const timeBlock = hours > 48 ? '6 hours' : '1 hour';
+    
     // Get the forecast data with appropriate time blocks
     const result = await db.pool.query(`
       WITH latest_forecast AS (
@@ -250,11 +251,11 @@ router.get('/', async (req, res) => {
       normalized_data AS (
         SELECT 
           CASE 
-  WHEN $3 = '6 hours' THEN 
-    date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
-  ELSE 
-    timestamp
-END as block_start,
+            WHEN $3 = '6 hours' THEN 
+              date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
+            ELSE 
+              date_trunc('hour', timestamp)
+          END as block_start,
           location_lat,
           location_lon,
           SUM(precipitation_mm) as precipitation_mm,
@@ -265,11 +266,11 @@ END as block_start,
         FROM latest_forecast
         GROUP BY 
           CASE 
-  WHEN $3 = '6 hours' THEN 
-    date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
-  ELSE 
-    timestamp
-END,
+            WHEN $3 = '6 hours' THEN 
+              date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
+            ELSE 
+              date_trunc('hour', timestamp)
+          END,
           location_lat,
           location_lon
       )
@@ -295,7 +296,8 @@ END,
         data_points: result.rows.length,
         forecast_created_at: result.rows[0]?.forecast_created_at || null,
         time_block: timeBlock,
-        normalized: hours > 48
+        normalized: hours > 48,
+        interval_hours: hours > 48 ? 6 : 1
       },
       data: result.rows
     };
@@ -305,6 +307,9 @@ END,
       - Data points: ${result.rows.length}
       - Time block: ${timeBlock}
       - Normalized: ${hours > 48}
+      - Interval hours: ${hours > 48 ? 6 : 1}
+      - First timestamp: ${result.rows[0]?.timestamp}
+      - Last timestamp: ${result.rows[result.rows.length - 1]?.timestamp}
     `);
 
     res.json(response);
