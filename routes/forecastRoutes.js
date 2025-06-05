@@ -247,35 +247,9 @@ router.get('/', async (req, res) => {
         FROM weather_forecast
         WHERE timestamp BETWEEN $1 AND $2
         ORDER BY timestamp, forecast_created_at DESC
-      ),
-      normalized_data AS (
-        SELECT 
-          CASE 
-            WHEN $3 = '6 hours' THEN 
-              date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
-            ELSE 
-              timestamp  -- Use exact timestamp for 1-hour blocks
-          END as block_start,
-          location_lat,
-          location_lon,
-          SUM(precipitation_mm) as precipitation_mm,
-          AVG(temperature_c) as temperature_c,
-          AVG(pressure_hpa) as pressure_hpa,
-          AVG(wind_speed_mps) as wind_speed_mps,
-          MAX(forecast_created_at) as forecast_created_at
-        FROM latest_forecast
-        GROUP BY 
-          CASE 
-            WHEN $3 = '6 hours' THEN 
-              date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
-            ELSE 
-              timestamp  -- Use exact timestamp for 1-hour blocks
-          END,
-          location_lat,
-          location_lon
       )
       SELECT 
-        block_start as timestamp,
+        timestamp,
         location_lat,
         location_lon,
         ROUND(precipitation_mm::numeric, 2) as precipitation_mm,
@@ -283,9 +257,36 @@ router.get('/', async (req, res) => {
         ROUND(pressure_hpa::numeric, 2) as pressure_hpa,
         ROUND(wind_speed_mps::numeric, 2) as wind_speed_mps,
         forecast_created_at
-      FROM normalized_data
-      ORDER BY block_start ASC
-    `, [startTime.toISOString(), endTime.toISOString(), timeBlock]);
+      FROM latest_forecast
+      ORDER BY timestamp ASC
+    `, [startTime.toISOString(), endTime.toISOString()]);
+
+    // Validate data points and intervals
+    const expectedPoints = hours > 48 ? Math.ceil(hours / 6) : hours;
+    const actualPoints = result.rows.length;
+    
+    // Calculate intervals between data points
+    const intervals = [];
+    for (let i = 1; i < result.rows.length; i++) {
+      const current = moment(result.rows[i].timestamp);
+      const previous = moment(result.rows[i-1].timestamp);
+      const diffHours = current.diff(previous, 'hours');
+      intervals.push(diffHours);
+    }
+
+    // Log detailed information about the data
+    console.log(`Forecast data analysis:
+      - Time range: ${startTime.toISOString()} to ${endTime.toISOString()}
+      - Expected data points: ${expectedPoints}
+      - Actual data points: ${actualPoints}
+      - Time block: ${timeBlock}
+      - Normalized: ${hours > 48}
+      - Interval hours: ${hours > 48 ? 6 : 1}
+      - First timestamp: ${result.rows[0]?.timestamp}
+      - Last timestamp: ${result.rows[result.rows.length - 1]?.timestamp}
+      - Intervals between points: ${intervals.join(', ')}
+      - Sample timestamps: ${result.rows.slice(0, 5).map(r => r.timestamp).join(', ')}
+    `);
 
     // Add metadata about the forecast
     const response = {
@@ -293,26 +294,22 @@ router.get('/', async (req, res) => {
         range: range,
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
-        data_points: result.rows.length,
+        data_points: actualPoints,
+        expected_points: expectedPoints,
         forecast_created_at: result.rows[0]?.forecast_created_at || null,
         time_block: timeBlock,
         normalized: hours > 48,
-        interval_hours: hours > 48 ? 6 : 1
+        interval_hours: hours > 48 ? 6 : 1,
+        intervals: intervals,
+        data_validation: {
+          has_expected_points: actualPoints === expectedPoints,
+          has_consistent_intervals: intervals.every(i => i === (hours > 48 ? 6 : 1)),
+          first_timestamp: result.rows[0]?.timestamp,
+          last_timestamp: result.rows[result.rows.length - 1]?.timestamp
+        }
       },
       data: result.rows
     };
-
-    // Log the data for debugging
-    console.log(`Forecast data retrieved:
-      - Time range: ${startTime.toISOString()} to ${endTime.toISOString()}
-      - Data points: ${result.rows.length}
-      - Time block: ${timeBlock}
-      - Normalized: ${hours > 48}
-      - Interval hours: ${hours > 48 ? 6 : 1}
-      - First timestamp: ${result.rows[0]?.timestamp}
-      - Last timestamp: ${result.rows[result.rows.length - 1]?.timestamp}
-      - Sample intervals: ${result.rows.slice(0, 3).map(r => r.timestamp).join(', ')}
-    `);
 
     res.json(response);
   } catch (err) {
