@@ -254,7 +254,7 @@ router.get('/', async (req, res) => {
             WHEN $3 = '6 hours' THEN 
               date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
             ELSE 
-              date_trunc('hour', timestamp)
+              timestamp  -- Use exact timestamp for 1-hour blocks
           END as block_start,
           location_lat,
           location_lon,
@@ -269,7 +269,7 @@ router.get('/', async (req, res) => {
             WHEN $3 = '6 hours' THEN 
               date_trunc('hour', timestamp) - (EXTRACT(HOUR FROM timestamp)::int % 6) * interval '1 hour'
             ELSE 
-              date_trunc('hour', timestamp)
+              timestamp  -- Use exact timestamp for 1-hour blocks
           END,
           location_lat,
           location_lon
@@ -302,6 +302,7 @@ router.get('/', async (req, res) => {
       data: result.rows
     };
 
+    // Log the data for debugging
     console.log(`Forecast data retrieved:
       - Time range: ${startTime.toISOString()} to ${endTime.toISOString()}
       - Data points: ${result.rows.length}
@@ -310,6 +311,7 @@ router.get('/', async (req, res) => {
       - Interval hours: ${hours > 48 ? 6 : 1}
       - First timestamp: ${result.rows[0]?.timestamp}
       - Last timestamp: ${result.rows[result.rows.length - 1]?.timestamp}
+      - Sample intervals: ${result.rows.slice(0, 3).map(r => r.timestamp).join(', ')}
     `);
 
     res.json(response);
