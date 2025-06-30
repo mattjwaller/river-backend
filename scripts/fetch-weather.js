@@ -5,7 +5,13 @@ async function fetchWeather() {
   console.log('Starting weather forecast fetch at', new Date().toISOString());
   
   try {
-    const response = await fetch(`${process.env.API_URL}/api/forecast/fetch`, {
+    // Use localhost with the PORT environment variable for internal API calls
+    const port = process.env.PORT || 3000;
+    const apiUrl = `http://localhost:${port}`;
+    
+    console.log(`Making request to: ${apiUrl}/api/forecast/fetch`);
+    
+    const response = await fetch(`${apiUrl}/api/forecast/fetch`, {
       method: 'POST',
       headers: {
         'x-api-key': process.env.API_KEY
