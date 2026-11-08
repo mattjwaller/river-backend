@@ -1,472 +1,65 @@
 const request = require('supertest');
-const express = require('express');
-const dataRoutes = require('../routes/dataRoutes');
-
-// Create mock data store
-const mockData = {
-  waterLevel: [],
-  deviceStatus: [],
-  deviceLogs: []
-};
-
-// Mock the database module
-jest.mock('../db/db', () => ({
-  query: async (text, params) => {
-    // Handle INSERT queries
-    if (text.startsWith('INSERT INTO water_level')) {
-      mockData.waterLevel.push({
-        id: mockData.waterLevel.length + 1,
-        level_cm: params[0],
-        trend: params[1],
-        timestamp: params[2],
-        min_level: params[3],
-        max_level: params[4]
-      });
-      return { rows: [] };
-    }
-    if (text.startsWith('INSERT INTO device_status')) {
-      mockData.deviceStatus.push({
-        id: mockData.deviceStatus.length + 1,
-        cpu_percent: params[0],
-        mem_percent: params[1],
-        disk_percent: params[2],
-        battery: params[3],
-        temperature: params[4],
-        uptime_seconds: params[5],
-        ip_address: params[6],
-        wifi_strength: params[7],
-        status: params[8],
-        timestamp: params[9]
-      });
-      return { rows: [] };
-    }
-    if (text.startsWith('INSERT INTO device_logs')) {
-      mockData.deviceLogs.push({
-        id: mockData.deviceLogs.length + 1,
-        level: params[0],
-        message: params[1],
-        source: params[2],
-        timestamp: params[3],
-        metadata: params[4]
-      });
-      return { rows: [] };
-    }
-
-    // Handle SELECT queries
-    if (text.includes('FROM water_level')) {
-      return { rows: mockData.waterLevel.slice(-1) };
-    }
-    if (text.includes('FROM device_status')) {
-      return { rows: mockData.deviceStatus.slice(-1) };
-    }
-    if (text.includes('FROM device_logs')) {
-      // Handle log statistics query
-      if (text.includes('COUNT(*)')) {
-        const stats = mockData.deviceLogs.reduce((acc, log) => {
-          if (!acc[log.level]) {
-            acc[log.level] = {
-              level: log.level,
-              count: 0,
-              first_seen: log.timestamp,
-              last_seen: log.timestamp
-            };
-          }
-          acc[log.level].count++;
-          if (log.timestamp < acc[log.level].first_seen) {
-            acc[log.level].first_seen = log.timestamp;
-          }
-          if (log.timestamp > acc[log.level].last_seen) {
-            acc[log.level].last_seen = log.timestamp;
-          }
-          return acc;
-        }, {});
-        return { rows: Object.values(stats) };
-      }
-
-      // Handle regular log queries
-      let filteredLogs = [...mockData.deviceLogs];
-      
-      // Extract query parameters
-      const levelMatch = text.match(/level = \$(\d+)/);
-      const sourceMatch = text.match(/source = \$(\d+)/);
-      const limitMatch = text.match(/LIMIT \$(\d+)/);
-      const offsetMatch = text.match(/OFFSET \$(\d+)/);
-
-      if (levelMatch && params[parseInt(levelMatch[1]) - 1]) {
-        filteredLogs = filteredLogs.filter(log => log.level === params[parseInt(levelMatch[1]) - 1]);
-      }
-      if (sourceMatch && params[parseInt(sourceMatch[1]) - 1]) {
-        filteredLogs = filteredLogs.filter(log => log.source === params[parseInt(sourceMatch[1]) - 1]);
-      }
-
-      const limit = limitMatch ? params[parseInt(limitMatch[1]) - 1] : 100;
-      const offset = offsetMatch ? params[parseInt(offsetMatch[1]) - 1] : 0;
-
-      return { rows: filteredLogs.slice(offset, offset + limit) };
-    }
-
-    return { rows: [] };
+const mockState = { readings:[], logs:[], tokens:[] };
+const mockQuery = jest.fn(async (sql, p=[]) => {
+  if (sql.includes('FROM devices WHERE external_id')) return {rows:['pi-001','pi-002'].includes(p[0])?[{external_id:p[0],last_seen_at:new Date().toISOString()}]:[]};
+  if (sql.includes('FROM device_tokens')) return {rows:mockState.tokens.filter(t=>t.token_hash===p[0])};
+  if (sql.startsWith('INSERT INTO water_level ')) mockState.readings.push({id:mockState.readings.length+1,level_cm:p[0],trend:p[1],timestamp:p[2],device_id:p[5]});
+  if (sql.startsWith('SELECT * FROM water_level WHERE')) return {rows:mockState.readings.filter(r=>!p[0]||r.device_id===p[0]).slice(-1)};
+  if (sql.startsWith('INSERT INTO device_logs')) mockState.logs.push({device_id:p[0],level:p[1],source:'sensor',message:p[2]});
+  if (sql.startsWith('SELECT * FROM device_logs')) return {rows:mockState.logs.filter(r=>r.device_id===p[0])};
+  if (sql.includes('SELECT COUNT(*) AS total_count')) return {rows:[{total_count:'0'}]};
+  return { rows:[] };
+});
+jest.mock('../db/db',()=>({pool:{query:mockQuery,connect:async()=>({query:mockQuery,release(){}})}}));
+jest.mock('node-fetch',()=>jest.fn());
+const fetch=require('node-fetch');
+const app=require('../app');
+const {digest}=require('../middleware/auth');
+const call=(method,url)=>request(app)[method](url).set('x-api-key','server-test');
+beforeEach(()=>{
+  process.env.RIVERWATCH_API_KEY='server-test';process.env.ADMIN_API_KEY='admin-test';process.env.API_KEY='legacy-test';
+  mockState.readings=[];mockState.logs=[];mockState.tokens=[{device_id:'pi-001',token_hash:digest('dev_test')}];mockQuery.mockClear();
+});
+test('two Pis post different levels and scoped reads stay separate',async()=>{
+  for(const [device_id,level_cm] of [['pi-001',58.2],['pi-002',91.7]]){
+    expect((await call('post','/api/telemetry').send({device_id,timestamp:new Date().toISOString(),readings:{level_cm},diagnostics:{}})).status).toBe(200);
   }
-}));
-
-describe('API Endpoints', () => {
-  let app;
-
-  beforeEach(() => {
-    app = express();
-    app.use(express.json());
-    app.use(dataRoutes);
-    // Clear mock data before each test
-    mockData.waterLevel = [];
-    mockData.deviceStatus = [];
-    mockData.deviceLogs = [];
-  });
-
-  describe('POST /water-level', () => {
-    it('should save water level data', async () => {
-      const data = {
-        level_cm: 150,
-        trend: 'rising',
-        timestamp: '2024-02-20T12:00:00Z',
-        min_level: 100,
-        max_level: 200
-      };
-
-      const response = await request(app)
-        .post('/water-level')
-        .send(data);
-
-      expect(response.status).toBe(200);
-    });
-
-    it('should handle missing required fields', async () => {
-      const data = {
-        level_cm: 150,
-        // Missing trend and timestamp
-        min_level: 100,
-        max_level: 200
-      };
-
-      const response = await request(app)
-        .post('/water-level')
-        .send(data);
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Missing required fields');
-    });
-  });
-
-  describe('GET /water-level/current', () => {
-    it('should return the most recent water level', async () => {
-      const data = {
-        level_cm: 150,
-        trend: 'rising',
-        timestamp: '2024-02-20T12:00:00Z',
-        min_level: 100,
-        max_level: 200
-      };
-
-      await request(app)
-        .post('/water-level')
-        .send(data);
-
-      const response = await request(app)
-        .get('/water-level/current');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject(data);
-    });
-
-    it('should return a message when no data is available', async () => {
-      const response = await request(app)
-        .get('/water-level/current');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'No water level data available');
-    });
-  });
-
-  describe('POST /device-status', () => {
-    it('should save device status data', async () => {
-      const data = {
-        cpu_percent: 45,
-        mem_percent: 60,
-        disk_percent: 75,
-        battery: 85,
-        temperature: 35,
-        uptime_seconds: 3600,
-        ip_address: '192.168.1.100',
-        wifi_strength: -65,
-        status: 'healthy',
-        timestamp: '2024-02-20T12:00:00Z'
-      };
-
-      const response = await request(app)
-        .post('/device-status')
-        .send(data);
-
-      expect(response.status).toBe(200);
-    });
-
-    it('should handle missing required fields', async () => {
-      const data = {
-        cpu_percent: 45,
-        // Missing mem_percent, disk_percent, status, and timestamp
-        battery: 85,
-        temperature: 35
-      };
-
-      const response = await request(app)
-        .post('/device-status')
-        .send(data);
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Missing required fields');
-    });
-  });
-
-  describe('GET /device-status', () => {
-    it('should return the most recent device status', async () => {
-      const data = {
-        cpu_percent: 45,
-        mem_percent: 60,
-        disk_percent: 75,
-        battery: 85,
-        temperature: 35,
-        uptime_seconds: 3600,
-        ip_address: '192.168.1.100',
-        wifi_strength: -65,
-        status: 'healthy',
-        timestamp: '2024-02-20T12:00:00Z'
-      };
-
-      await request(app)
-        .post('/device-status')
-        .send(data);
-
-      const response = await request(app)
-        .get('/device-status');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject(data);
-    });
-
-    it('should return a message when no data is available', async () => {
-      const response = await request(app)
-        .get('/device-status');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'No device status data available');
-    });
-  });
-
-  describe('POST /logs', () => {
-    it('should save log data', async () => {
-      const data = {
-        level: 'info',
-        message: 'Test log message',
-        source: 'test',
-        timestamp: '2024-02-20T12:00:00Z',
-        metadata: { test: true }
-      };
-
-      const response = await request(app)
-        .post('/logs')
-        .send(data);
-
-      expect(response.status).toBe(200);
-    });
-
-    it('should handle missing required fields', async () => {
-      const data = {
-        level: 'info',
-        // Missing message and source
-        timestamp: '2024-02-20T12:00:00Z'
-      };
-
-      const response = await request(app)
-        .post('/logs')
-        .send(data);
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Missing required fields');
-    });
-  });
-
-  describe('GET /logs', () => {
-    it('should return logs with filtering', async () => {
-      const logs = [
-        {
-          level: 'info',
-          message: 'Test log 1',
-          source: 'test',
-          timestamp: '2024-02-20T12:00:00Z'
-        },
-        {
-          level: 'error',
-          message: 'Test log 2',
-          source: 'test',
-          timestamp: '2024-02-20T12:01:00Z'
-        }
-      ];
-
-      for (const log of logs) {
-        await request(app)
-          .post('/logs')
-          .send(log);
-      }
-
-      const response = await request(app)
-        .get('/logs?level=info');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveLength(1);
-      expect(response.body[0].level).toBe('info');
-    });
-
-    it('should handle invalid query parameters', async () => {
-      const response = await request(app)
-        .get('/logs?limit=invalid&offset=-1');
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-    });
-  });
-
-  describe('GET /logs/stats', () => {
-    it('should return log statistics', async () => {
-      const logs = [
-        {
-          level: 'info',
-          message: 'Test log 1',
-          source: 'test',
-          timestamp: '2024-02-20T12:00:00Z'
-        },
-        {
-          level: 'error',
-          message: 'Test log 2',
-          source: 'test',
-          timestamp: '2024-02-20T12:01:00Z'
-        },
-        {
-          level: 'info',
-          message: 'Test log 3',
-          source: 'test',
-          timestamp: '2024-02-20T12:02:00Z'
-        }
-      ];
-
-      for (const log of logs) {
-        await request(app)
-          .post('/logs')
-          .send(log);
-      }
-
-      const response = await request(app)
-        .get('/logs/stats');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveLength(2);
-      
-      const infoStats = response.body.find(stat => stat.level === 'info');
-      expect(infoStats).toBeDefined();
-      expect(infoStats.count).toBe(2);
-      expect(infoStats.first_seen).toBe('2024-02-20T12:00:00Z');
-      expect(infoStats.last_seen).toBe('2024-02-20T12:02:00Z');
-
-      const errorStats = response.body.find(stat => stat.level === 'error');
-      expect(errorStats).toBeDefined();
-      expect(errorStats.count).toBe(1);
-      expect(errorStats.first_seen).toBe('2024-02-20T12:01:00Z');
-      expect(errorStats.last_seen).toBe('2024-02-20T12:01:00Z');
-    });
-  });
-
-  describe('GET /water-level/history', () => {
-    beforeEach(() => {
-      // Add some test data
-      mockData.waterLevel = [
-        {
-          id: 1,
-          level_cm: 150,
-          trend: 'rising',
-          timestamp: '2024-02-20T12:00:00Z',
-          min_level: 100,
-          max_level: 200
-        },
-        {
-          id: 2,
-          level_cm: 145,
-          trend: 'falling',
-          timestamp: '2024-02-20T11:00:00Z',
-          min_level: 100,
-          max_level: 200
-        },
-        {
-          id: 3,
-          level_cm: 155,
-          trend: 'stable',
-          timestamp: '2024-02-20T10:00:00Z',
-          min_level: 100,
-          max_level: 200
-        }
-      ];
-    });
-
-    it('should return water level history with range parameter', async () => {
-      const response = await request(app)
-        .get('/water-level/history?range=7d');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('data');
-      expect(response.body).toHaveProperty('meta');
-      expect(Array.isArray(response.body.data)).toBe(true);
-      expect(response.body.data.length).toBeGreaterThan(0);
-      expect(response.body.data[0]).toHaveProperty('timestamp');
-      expect(response.body.data[0]).toHaveProperty('level_cm');
-      expect(response.body.data[0]).toHaveProperty('trend');
-    });
-
-    it('should return water level history with start_date and end_date', async () => {
-      const response = await request(app)
-        .get('/water-level/history?start_date=2024-02-19T00:00:00Z&end_date=2024-02-21T00:00:00Z');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('data');
-      expect(response.body).toHaveProperty('meta');
-    });
-
-    it('should handle invalid range format', async () => {
-      const response = await request(app)
-        .get('/water-level/history?range=invalid');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
-    });
-
-    it('should handle missing date parameters', async () => {
-      const response = await request(app)
-        .get('/water-level/history');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
-    });
-
-    it('should respect limit and offset parameters', async () => {
-      const response = await request(app)
-        .get('/water-level/history?range=7d&limit=2&offset=1');
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.length).toBeLessThanOrEqual(2);
-    });
-
-    it('should handle different resolutions', async () => {
-      const response = await request(app)
-        .get('/water-level/history?range=7d&resolution=daily');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('data');
-      expect(response.body).toHaveProperty('meta');
-    });
-  });
-}); 
+  expect((await call('get','/api/data/water-level/current?device_id=pi-001')).body.level_cm).toBe(58.2);
+  expect((await call('get','/api/data/water-level/current?device_id=pi-002')).body.level_cm).toBe(91.7);
+});
+test.each(['/api/data/water-level/current','/api/data/water-level/history?range=24h','/api/data/device-status','/api/logs','/api/commands'])('unknown devices return 404: %s',async path=>{
+  const res=await call('get',path+(path.includes('?')?'&':'?')+'device_id=missing');expect(res.status).toBe(404);expect(res.body.error).toBe('device_not_found');
+});
+test('device token cannot access other devices or create commands',async()=>{
+  expect((await request(app).post('/api/telemetry').set('Authorization','Bearer dev_test').send({device_id:'pi-002'})).status).toBe(403);
+  expect((await request(app).post('/api/commands').set('Authorization','Bearer dev_test').send({device_id:'pi-001',command:'reboot'})).status).toBe(403);
+  expect((await request(app).get('/api/logs').set('Authorization','Bearer dev_test')).status).toBe(403);
+});
+test('revoked or unknown tokens fail closed',async()=>{
+  mockState.tokens=[];expect((await request(app).get('/api/commands').set('Authorization','Bearer dev_test')).status).toBe(401);
+});
+test('token issuance requires admin',async()=>expect((await call('post','/api/devices/pi-001/tokens').send({})).status).toBe(403));
+test('unknown commands are rejected',async()=>{
+  const res=await call('post','/api/commands').send({device_id:'pi-001',command:'shell'});expect(res.status).toBe(400);expect(res.body.error).toBe('unknown_command');
+});
+test('missing telemetry timestamp identifies parameter',async()=>{
+  const res=await call('post','/api/telemetry').send({device_id:'pi-001',readings:{level_cm:5}});expect(res.status).toBe(400);expect(res.body.param).toBe('timestamp');
+});
+test('sensor faults persist without a bogus reading',async()=>{
+  expect((await call('post','/api/telemetry').send({device_id:'pi-001',timestamp:new Date().toISOString(),readings:{fault:'echo_timeout'}})).status).toBe(200);
+  expect(mockState.readings).toHaveLength(0);expect((await call('get','/api/logs?device_id=pi-001')).body[0]).toMatchObject({source:'sensor',level:'error'});
+});
+test('history scopes SQL and validates resolution',async()=>{
+  expect((await call('get','/api/data/water-level/history?device_id=pi-001&range=24h&resolution=15min')).status).toBe(200);
+  expect(mockQuery.mock.calls.some(([sql,p])=>sql.includes('WITH samples')&&p[2]==='pi-001')).toBe(true);
+  expect((await call('get','/api/data/water-level/history?range=24h&resolution=bad')).status).toBe(400);
+});
+test('forecast validates coordinates',async()=>expect((await call('get','/api/forecast?lat=91')).status).toBe(400));
+test('EA stations use separate upstream requests and a cache',async()=>{
+  fetch.mockResolvedValue({ok:true,json:async()=>({items:[]})});
+  for(const station of ['test-a','test-b','test-a'])expect((await call('get',`/api/data/ea-flood-data?station_id=${station}`)).status).toBe(200);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+test('legacy key can be disabled for cutover',async()=>{
+  process.env.ALLOW_LEGACY_API_KEY='false';expect((await request(app).get('/api/logs').set('x-api-key','legacy-test')).status).toBe(401);delete process.env.ALLOW_LEGACY_API_KEY;
+});

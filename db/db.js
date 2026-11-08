@@ -8,7 +8,7 @@ const mockDb = {
   device_logs: [],
   device_commands: [],
   query: async (text, params) => {
-    console.log('Mock DB Query:', text, params);
+    // Local mode intentionally has no persistent storage.
     return { rows: [] };
   }
 };
@@ -17,9 +17,12 @@ const mockDb = {
 const pool = process.env.DATABASE_URL 
   ? new Pool({
       connectionString: process.env.DATABASE_URL,
+      options: '-c timezone=UTC',
       ssl: { rejectUnauthorized: false } // Required for Railway's PostgreSQL
     })
   : mockDb;
+
+mockDb.connect = async () => ({ query: mockDb.query, release() {} });
 
 // Initialize database tables
 const initializeDatabase = async () => {
@@ -104,6 +107,63 @@ const initializeDatabase = async () => {
       END $$;
     `);
     
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS devices (
+        external_id TEXT PRIMARY KEY,
+        last_seen_at TIMESTAMPTZ,
+        heartbeat_interval_seconds INTEGER NOT NULL DEFAULT 300 CHECK (heartbeat_interval_seconds > 0)
+      );
+      INSERT INTO devices(external_id) SELECT DISTINCT device_id FROM device_commands ON CONFLICT DO NOTHING;
+      ALTER TABLE water_level ADD COLUMN IF NOT EXISTS device_id TEXT REFERENCES devices(external_id);
+      ALTER TABLE device_status ADD COLUMN IF NOT EXISTS device_id TEXT REFERENCES devices(external_id);
+      ALTER TABLE device_logs ADD COLUMN IF NOT EXISTS device_id TEXT REFERENCES devices(external_id);
+      ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS requested_by TEXT;
+      ALTER TABLE water_level ALTER COLUMN level_cm TYPE DOUBLE PRECISION;
+      ALTER TABLE water_level ALTER COLUMN min_level TYPE DOUBLE PRECISION;
+      ALTER TABLE water_level ALTER COLUMN max_level TYPE DOUBLE PRECISION;
+      ALTER TABLE water_level ADD COLUMN IF NOT EXISTS distance_cm DOUBLE PRECISION;
+      ALTER TABLE water_level ADD COLUMN IF NOT EXISTS temperature_c DOUBLE PRECISION;
+      ALTER TABLE water_level ADD COLUMN IF NOT EXISTS quality_score DOUBLE PRECISION;
+      ALTER TABLE device_status ALTER COLUMN cpu_percent TYPE DOUBLE PRECISION;
+      ALTER TABLE device_status ALTER COLUMN mem_percent TYPE DOUBLE PRECISION;
+      ALTER TABLE device_status ALTER COLUMN disk_percent TYPE DOUBLE PRECISION;
+      ALTER TABLE device_status ALTER COLUMN temperature TYPE DOUBLE PRECISION;
+      CREATE TABLE IF NOT EXISTS device_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        device_id TEXT NOT NULL REFERENCES devices(external_id),
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        revoked_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS water_level_device_time ON water_level(device_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS device_status_device_time ON device_status(device_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS device_logs_device_time ON device_logs(device_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS commands_device_status ON device_commands(device_id, status, created_at);
+      CREATE TABLE IF NOT EXISTS webhook_outbox (
+        id BIGSERIAL PRIMARY KEY,
+        body TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        delivered_at TIMESTAMPTZ,
+        last_error TEXT
+      );
+      CREATE TABLE IF NOT EXISTS device_usage (
+        device_id TEXT NOT NULL REFERENCES devices(external_id),
+        metric TEXT NOT NULL,
+        period DATE NOT NULL,
+        count BIGINT NOT NULL DEFAULT 0,
+        PRIMARY KEY (device_id, metric, period)
+      );
+      CREATE TABLE IF NOT EXISTS water_level_hourly (
+        device_id TEXT NOT NULL REFERENCES devices(external_id),
+        timestamp TIMESTAMP NOT NULL,
+        level_cm DOUBLE PRECISION NOT NULL,
+        sample_count BIGINT NOT NULL,
+        min_level DOUBLE PRECISION,
+        max_level DOUBLE PRECISION,
+        PRIMARY KEY (device_id, timestamp)
+      );
+    `);
     console.log('Database tables initialized successfully');
   } catch (err) {
     console.error('Error initializing database tables:', err);
@@ -111,7 +171,5 @@ const initializeDatabase = async () => {
   }
 };
 
-// Initialize database on startup
-initializeDatabase().catch(console.error);
 
 module.exports = { pool, initializeDatabase };

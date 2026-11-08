@@ -2,7 +2,7 @@ const request = require('supertest');
 
 const API_URL = 'https://river-backend-production.up.railway.app:8080';
 
-describe('Railway Backend API Tests', () => {
+(process.env.RUN_RAILWAY_LEGACY_TESTS === 'true' ? describe : describe.skip)('Railway Backend API Tests', () => {
   describe('POST /water-level', () => {
     it('should save water level data', async () => {
       const data = {
